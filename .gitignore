@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+node_modules/
+frontend/dist/
+.DS_Store
+deploy/certs/*
+!deploy/certs/.gitkeep

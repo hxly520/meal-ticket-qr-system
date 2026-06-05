@@ -1,0 +1,17 @@
+[docker-ce-stable]
+name=Docker CE Stable - Aliyun
+baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/7/$basearch/stable
+enabled=1
+gpgcheck=0
+
+[docker-ce-test]
+name=Docker CE Test - Aliyun
+baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/7/$basearch/test
+enabled=0
+gpgcheck=0
+
+[docker-ce-nightly]
+name=Docker CE Nightly - Aliyun
+baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/7/$basearch/nightly
+enabled=0
+gpgcheck=0
