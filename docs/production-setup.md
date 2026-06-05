@@ -90,17 +90,17 @@ docker compose up -d --build
 
 企业微信后台需要准备，然后填入后台“系统设置”：
 
-- 企业 ID：`WECOM_CORP_ID`
-- 自建应用 AgentID：`WECOM_AGENT_ID`
-- 自建应用 Secret：`WECOM_SECRET`
-- 审批回调 Token：`WECOM_APPROVAL_TOKEN`
-- 审批回调 EncodingAESKey：`WECOM_APPROVAL_AES_KEY`
-- 饭票审批模板 ID：`WECOM_APPROVAL_TEMPLATE_ID`
+- 企业 ID
+- 自建应用 AgentID
+- 自建应用 Secret
+- 审批回调 Token
+- 审批回调 EncodingAESKey
+- 饭票审批模板 ID
 
 审批回调 URL：
 
 ```text
-http://sec-agent.poly-energy.com:18001/api/wecom/callback/approval
+https://your-domain.com/api/wecom/callback/approval
 ```
 
 系统已实现企业微信回调验签、AES 解密和审批通过后生成饭票。审批通过状态 `SpStatus=2` 时会生成饭票，并将带用餐信息的核销二维码 PNG 图片通过自建应用发给申请人，不再发送跳转链接卡片。
@@ -108,11 +108,11 @@ http://sec-agent.poly-energy.com:18001/api/wecom/callback/approval
 如果审批模板字段名称不同，在后台“系统设置”中修改：
 
 ```text
-WECOM_FIELD_MEAL_DATE=用餐日期
-WECOM_FIELD_MEAL_TYPE=餐别
-WECOM_FIELD_DINER_COUNT=用餐人数
-WECOM_FIELD_DEPARTMENT=部门
-WECOM_FIELD_REASON=申请原因
+用餐日期字段名=用餐日期
+餐别字段名=餐别
+用餐人数字段名=用餐人数
+部门字段名=部门
+申请原因字段名=申请原因
 ```
 
 餐别字段支持多选。系统会读取多选项并按“用餐人数 x 餐别数量”生成饭票，例如 2 人选择早餐、午餐、晚餐，会生成 6 张饭票。
@@ -152,12 +152,12 @@ docker compose exec postgres pg_dump -U meal meal_ticket > backup.sql
 
 - 后台系统设置中的系统公网地址必须是企业微信用户和饭堂扫码设备都可访问的 HTTPS 域名。
 - 企业微信审批回调 URL 使用 `https://your-domain.com/api/wecom/callback/approval`。
-- 审批模板字段名与 `WECOM_FIELD_MEAL_DATE`、`WECOM_FIELD_MEAL_TYPE`、`WECOM_FIELD_DEPARTMENT` 一致。
+- 审批模板字段名与后台“系统设置”里的字段映射一致。
 - 审批模板里“餐别”建议配置为多选控件，“用餐人数”建议配置为数字控件。
 - 自建应用可见范围包含申请员工，否则消息发送可能失败。
 - 自建应用需要具备给员工发送应用消息、上传临时素材图片、读取通讯录用户和部门的权限。
 - 首次上线后修改默认管理员密码，并为饭堂工作人员分配 `verifier` 角色。
 - 员工企业微信会直接收到二维码图片；饭堂工作人员使用手机相机、微信或企业微信扫一扫打开核销链接，系统自动核销并用颜色提示成功或失败。
-- 生产环境建议为 `sec-agent.poly-energy.com:18001` 配置 HTTPS，提升访问和登录安全性；当前核销流程不依赖网页摄像头权限。
+- 生产环境建议配置 HTTPS，提升访问和登录安全性；当前核销流程不依赖网页摄像头权限。
 
 后台日常操作见 [user-guide.md](user-guide.md)。

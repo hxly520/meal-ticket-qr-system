@@ -5,7 +5,7 @@
 浏览器访问部署地址，例如：
 
 ```text
-http://172.26.80.101/
+https://your-domain.com/
 ```
 
 默认管理员：
@@ -110,7 +110,7 @@ http://172.26.80.101/
 企业微信审批回调地址：
 
 ```text
-http://sec-agent.poly-energy.com:18001/api/wecom/callback/approval
+https://your-domain.com/api/wecom/callback/approval
 ```
 
 审批通过后，系统会：

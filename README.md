@@ -1,23 +1,57 @@
 # 饭票二维码核销系统
 
-Python + FastAPI + Vue + PostgreSQL 的饭票二维码核销系统，支持 Docker Compose 部署、后台饭票管理、扫码核销、企业微信审批通过自动生成饭票、行政导出核实表。
+饭票二维码核销系统用于处理员工忘带饭卡、来访人员临时用餐等场景。系统支持企业微信审批通过后自动生成饭票二维码图片，饭堂人员扫码后按权限、用餐日期和餐别时间段完成核销，行政人员可在后台查询、作废和导出核销记录。
 
-## 已实现能力
+## 功能概览
 
-- 后台登录与角色权限：`admin`、`hr`、`verifier`、`auditor`
-- 单张饭票生成、批量生成 API
-- 一次性二维码 token，数据库只保存 token hash
-- 核销权限控制与重复核销防护
-- 饭票作废、列表查询、Excel 导出
-- 企业微信审批回调验签、AES 解密、明文 JSON 联调入口
-- 系统设置页面维护企业微信参数、审批字段映射、系统公网地址和时区
-- Docker Compose 生产部署
+- 企业微信审批通过后自动生成饭票。
+- 支持用餐人数 x 多选餐别批量生成，一人一餐一码。
+- 饭票二维码图片包含公司名称、用餐日期、餐别、申请人、部门、饭票编号和版权说明。
+- 手机相机、微信或企业微信扫一扫后自动打开核销页面。
+- 核销时校验饭票状态、用餐日期、餐别时间段和过期时间。
+- 后台支持饭票分页查询、批量作废、Excel 导出。
+- 角色权限：`admin`、`hr`、`verifier`、`auditor`。
+- 企业微信参数、审批字段、部门映射、核销时间段均可在后台设置。
+- Docker Compose 一键部署 PostgreSQL、Redis、FastAPI、Vue 和 Nginx。
 
-## 快速部署
+## 技术栈
+
+- 后端：Python 3.12、FastAPI、SQLAlchemy、Alembic、PostgreSQL、Redis
+- 前端：Vue 3、Element Plus、Vite、Lucide Icons
+- 集成：企业微信审批回调、审批详情、应用消息、临时素材图片
+- 部署：Docker Compose、Nginx
+
+## 快速开始
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
+```
+
+默认管理员：
+
+```text
+admin / admin123456
+```
+
+上线后请立即修改默认密码，并设置新的 `JWT_SECRET_KEY`、数据库密码和后台系统设置。
+
+## 文档导航
+
+- [架构设计](docs/architecture.md)
+- [部署与企业微信联调](docs/production-setup.md)
+- [后台操作手册](docs/user-guide.md)
+- [配置项说明](docs/configuration.md)
+- [二次开发指南](docs/development.md)
+- [运维手册](docs/operations.md)
+- [GitHub 自动建仓与推送](docs/github-publish.md)
+
+## 开发与验证
+
+```bash
+python3 -m compileall backend/app
+node --check frontend/src/main.js
+cd frontend && npm run build
 ```
 
 远程生产环境同步：
@@ -26,14 +60,17 @@ docker compose up -d --build
 SSH_HOST=your-server SSH_USER=root REMOTE_DIR=/opt/meal-ticket ./deploy/remote_deploy.sh
 ```
 
-建议使用临时 SSH key 或受限部署账号联调，不建议在聊天中直接发送长期有效的服务器密码。
+建议使用临时 SSH key、受限部署账号或堡垒机账号联调，不建议在聊天、文档或脚本中保存长期有效的服务器密码。
 
-默认账号：
+如需记录单台生产服务器的部署过程，建议在私有运维知识库或本地 `docs/deployment-record-*.md` 文件中维护；此类文件包含内网地址、域名或排障信息时不建议提交到开源仓库。
 
-```text
-admin / admin123456
-```
+## 安全提示
 
-生产部署与企业微信配置见 [docs/production-setup.md](docs/production-setup.md)，后台使用见 [docs/user-guide.md](docs/user-guide.md)。
+- `.env`、证书、数据库备份、真实企业微信 Secret、GitHub Token 不应提交到仓库。
+- GitHub Token 请存入系统钥匙串或 GitHub CLI，不要写入脚本、README 或 `.git/config`。
+- 生产环境建议启用 HTTPS。
+- 默认管理员只用于初始化，上线后必须修改。
 
-当前服务器部署记录见 [docs/deployment-record-172.26.80.101.md](docs/deployment-record-172.26.80.101.md)。
+## 许可证
+
+本项目使用 MIT License。详见 [LICENSE](LICENSE)。

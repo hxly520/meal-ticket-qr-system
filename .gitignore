@@ -8,3 +8,4 @@ frontend/dist/
 .DS_Store
 deploy/certs/*
 !deploy/certs/.gitkeep
+docs/deployment-record-*.md
