@@ -17,14 +17,17 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "meal_tickets",
-        sa.Column("diner_count", sa.Integer(), nullable=False, server_default="1"),
-    )
-    op.add_column(
-        "meal_tickets",
-        sa.Column("diner_index", sa.Integer(), nullable=False, server_default="1"),
-    )
+    columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("meal_tickets")}
+    if "diner_count" not in columns:
+        op.add_column(
+            "meal_tickets",
+            sa.Column("diner_count", sa.Integer(), nullable=False, server_default="1"),
+        )
+    if "diner_index" not in columns:
+        op.add_column(
+            "meal_tickets",
+            sa.Column("diner_index", sa.Integer(), nullable=False, server_default="1"),
+        )
     op.execute("ALTER TABLE meal_tickets DROP CONSTRAINT IF EXISTS meal_tickets_approval_sp_no_key")
 
 
@@ -34,5 +37,8 @@ def downgrade() -> None:
         "meal_tickets",
         ["approval_sp_no"],
     )
-    op.drop_column("meal_tickets", "diner_index")
-    op.drop_column("meal_tickets", "diner_count")
+    columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("meal_tickets")}
+    if "diner_index" in columns:
+        op.drop_column("meal_tickets", "diner_index")
+    if "diner_count" in columns:
+        op.drop_column("meal_tickets", "diner_count")

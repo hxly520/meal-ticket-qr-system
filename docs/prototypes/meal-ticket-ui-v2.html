@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>饭票二维码核销系统 UI V2 原型</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --bg-2: #101722;
+      --panel: rgba(19, 25, 36, 0.94);
+      --panel-2: rgba(24, 32, 45, 0.92);
+      --line: rgba(255, 255, 255, 0.08);
+      --line-strong: rgba(255, 255, 255, 0.14);
+      --text: #f7fafc;
+      --muted: #99a7b8;
+      --muted-2: #718096;
+      --green: #2fd17c;
+      --green-soft: rgba(47, 209, 124, 0.14);
+      --cyan: #3cc7dd;
+      --cyan-soft: rgba(60, 199, 221, 0.14);
+      --amber: #f5b84b;
+      --amber-soft: rgba(245, 184, 75, 0.14);
+      --red: #f56b7c;
+      --red-soft: rgba(245, 107, 124, 0.15);
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+      --radius: 12px;
+      --radius-sm: 8px;
+      font-family: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 8%, rgba(47, 209, 124, 0.12), transparent 28%),
+        radial-gradient(circle at 84% 16%, rgba(60, 199, 221, 0.12), transparent 32%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    body:not(.screen-index) .screen { display: none; }
+    body.screen-desktop-dashboard #desktop-dashboard,
+    body.screen-desktop-tickets #desktop-tickets,
+    body.screen-desktop-create #desktop-create,
+    body.screen-desktop-bindings #desktop-bindings,
+    body.screen-desktop-ops #desktop-ops,
+    body.screen-desktop-users #desktop-users,
+    body.screen-desktop-logs #desktop-logs,
+    body.screen-mobile-admin #mobile-admin,
+    body.screen-mobile-tickets #mobile-tickets,
+    body.screen-mobile-create #mobile-create,
+    body.screen-mobile-bindings #mobile-bindings,
+    body.screen-mobile-ops #mobile-ops,
+    body.screen-mobile-verify #mobile-verify,
+    body.screen-mobile-balance #mobile-balance,
+    body.screen-ticket-card #ticket-card { display: block; }
+
+    .screen { min-height: 100vh; padding: 20px; }
+    .shell {
+      width: 1440px;
+      height: 960px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 252px 1fr;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(8, 12, 19, 0.82);
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: rgba(10, 14, 21, 0.92);
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .logo {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--green), var(--cyan));
+      color: #061014;
+      font-weight: 900;
+    }
+
+    .brand strong { display: block; font-size: 16px; }
+    .brand span { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .nav-section { display: grid; gap: 6px; }
+    .nav-title { padding: 0 12px; color: var(--muted-2); font-size: 12px; }
+    .nav-item {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      border-radius: var(--radius-sm);
+      color: #c8d2df;
+      font-size: 14px;
+    }
+    .nav-item.active {
+      color: var(--text);
+      background: linear-gradient(90deg, rgba(47, 209, 124, 0.2), rgba(60, 199, 221, 0.08));
+      box-shadow: inset 3px 0 0 var(--green);
+    }
+    .nav-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.8;
+    }
+
+    .main {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .topbar {
+      height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(12, 17, 25, 0.76);
+    }
+
+    .topbar h1 { margin: 0; font-size: 22px; font-weight: 700; }
+    .topbar p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .pill, .btn {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 12px;
+      background: rgba(255, 255, 255, 0.04);
+      color: #d9e2ed;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .btn.primary { background: var(--green); color: #07100c; border-color: transparent; font-weight: 700; }
+    .btn.warn { background: var(--amber-soft); color: #ffd083; border-color: rgba(245, 184, 75, 0.25); }
+    .btn.danger { background: var(--red-soft); color: #ff9ca8; border-color: rgba(245, 107, 124, 0.28); }
+
+    .content {
+      flex: 1;
+      overflow: hidden;
+      padding: 22px 24px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .metric, .panel, .mini-panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .metric {
+      height: 118px;
+      padding: 18px;
+      position: relative;
+      overflow: hidden;
+    }
+    .metric span { color: var(--muted); font-size: 13px; }
+    .metric strong { display: block; margin-top: 12px; font-size: 30px; letter-spacing: 0; }
+    .metric small { color: var(--muted-2); }
+    .metric .badge { position: absolute; right: 16px; top: 16px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      background: var(--green-soft);
+      color: #8cf0b9;
+    }
+    .badge.warn { background: var(--amber-soft); color: #ffd083; }
+    .badge.danger { background: var(--red-soft); color: #ff9ca8; }
+    .badge.info { background: var(--cyan-soft); color: #8ceaff; }
+
+    .grid-2 { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .panel { padding: 18px; min-height: 220px; }
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .panel h2, .mini-panel h3 { margin: 0; font-size: 16px; }
+    .panel p, .mini-panel p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+
+    .chart {
+      height: 220px;
+      display: grid;
+      align-items: end;
+      grid-template-columns: repeat(14, 1fr);
+      gap: 8px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+    .bar { border-radius: 7px 7px 0 0; background: linear-gradient(180deg, var(--green), rgba(47, 209, 124, 0.18)); }
+    .bar:nth-child(3n) { background: linear-gradient(180deg, var(--cyan), rgba(60, 199, 221, 0.16)); }
+    .progress-list { display: grid; gap: 14px; }
+    .progress-row { display: grid; gap: 7px; }
+    .progress-row div:first-child { display: flex; justify-content: space-between; color: #dce5ee; font-size: 13px; }
+    .progress-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--green), var(--cyan)); }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr 140px 140px auto auto;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .input, .select {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      height: 42px;
+      color: #a9b6c7;
+      font-weight: 600;
+      text-align: left;
+      border-bottom: 1px solid var(--line-strong);
+      white-space: nowrap;
+    }
+    td {
+      height: 52px;
+      color: #e4edf7;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    tr.dim td { color: #9aa8ba; }
+    .right { text-align: right; }
+    .muted { color: var(--muted); }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .field {
+      min-height: 86px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.035);
+    }
+    .field label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+    .field strong { color: #edf6ff; font-size: 15px; }
+    .check-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .check { padding: 7px 10px; border-radius: 999px; background: var(--green-soft); color: #9df1c2; font-size: 13px; }
+    .check.off { background: rgba(255,255,255,0.04); color: var(--muted); }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 16px;
+    }
+    .summary-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(47, 209, 124, 0.10), rgba(60, 199, 221, 0.04));
+    }
+    .summary-card strong { display: block; font-size: 34px; margin: 12px 0 4px; }
+
+    .ops-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 16px; }
+    .settings-list { display: grid; gap: 10px; }
+    .setting-row {
+      display: grid;
+      grid-template-columns: 150px 1fr 80px;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.035);
+      color: #dce6f1;
+      font-size: 13px;
+    }
+
+    .phone-wrap {
+      width: 430px;
+      min-height: 932px;
+      margin: 0 auto;
+      padding: 14px;
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 38px;
+      background: #05070b;
+      box-shadow: var(--shadow);
+    }
+    .phone {
+      width: 100%;
+      min-height: 904px;
+      overflow: hidden;
+      border-radius: 28px;
+      background: #0b0f17;
+      border: 1px solid var(--line);
+    }
+    .mobile-head {
+      padding: 22px 18px 14px;
+      background: linear-gradient(180deg, rgba(47,209,124,0.14), rgba(11,15,23,0));
+    }
+    .mobile-head h1 { margin: 10px 0 6px; font-size: 22px; }
+    .mobile-head p { margin: 0; color: var(--muted); font-size: 13px; }
+    .mobile-content { padding: 14px; display: grid; gap: 12px; }
+    .mobile-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 14px;
+    }
+    .mobile-card h2 { margin: 0 0 10px; font-size: 16px; }
+    .mobile-nav {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .mobile-nav div {
+      min-height: 74px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      color: #dce6f1;
+      font-size: 12px;
+    }
+    .scan-result {
+      min-height: 250px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(47,209,124,0.18), rgba(47,209,124,0.05));
+      border: 1px solid rgba(47,209,124,0.28);
+    }
+    .scan-result .mark {
+      width: 86px;
+      height: 86px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--green);
+      color: #07100c;
+      font-size: 42px;
+      font-weight: 900;
+      margin: 0 auto 18px;
+    }
+    .scan-result.fail {
+      background: linear-gradient(180deg, rgba(245,107,124,0.18), rgba(245,107,124,0.05));
+      border-color: rgba(245,107,124,0.28);
+    }
+    .scan-result.fail .mark { background: var(--red); color: white; }
+
+    .balance-hero {
+      padding: 24px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #173326, #102d38);
+      border: 1px solid rgba(255,255,255,0.14);
+    }
+    .balance-hero span { color: #b8c8d8; font-size: 13px; }
+    .balance-hero strong { display: block; margin-top: 14px; font-size: 44px; }
+    .balance-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .ticket-stage {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 40px;
+      background: #eef3f6;
+    }
+    .ticket {
+      width: 430px;
+      min-height: 760px;
+      padding: 28px 26px 34px;
+      border-radius: 20px;
+      background: white;
+      color: #1a202c;
+      box-shadow: 0 26px 70px rgba(32, 48, 65, 0.20);
+      border: 1px solid #d8e2ea;
+    }
+    .ticket-top { text-align: center; border-bottom: 1px dashed #cbd5df; padding-bottom: 18px; }
+    .ticket-top h1 { margin: 8px 0 4px; font-size: 24px; }
+    .ticket-top p { margin: 0; color: #64748b; }
+    .ticket-meta {
+      margin: 20px 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .ticket-meta div {
+      padding: 12px;
+      border-radius: 10px;
+      background: #f5f8fa;
+    }
+    .ticket-meta span { display: block; color: #64748b; font-size: 12px; margin-bottom: 5px; }
+    .ticket-meta strong { font-size: 14px; }
+    .qr-box {
+      width: 278px;
+      height: 278px;
+      margin: 18px auto 22px;
+      padding: 15px;
+      border-radius: 18px;
+      background: #f7fafc;
+      border: 1px solid #dce6ef;
+    }
+    .qr-grid {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: repeat(17, 1fr);
+      grid-template-rows: repeat(17, 1fr);
+      gap: 3px;
+      background: #fff;
+      padding: 8px;
+    }
+    .qr-grid span { min-width: 0; min-height: 0; }
+    .qr-grid i { display: block; width: 100%; height: 100%; border-radius: 2px; background: #0f172a; }
+    .ticket-no {
+      text-align: center;
+      color: #334155;
+      font-weight: 700;
+      margin-bottom: 58px;
+    }
+    .ticket-footer {
+      min-height: 86px;
+      display: grid;
+      align-items: end;
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+      border-top: 1px dashed #cbd5df;
+      padding-top: 18px;
+    }
+
+    .index {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 48px;
+    }
+    .index a {
+      display: block;
+      margin: 10px 0;
+      color: #9df1c2;
+    }
+  </style>
+</head>
+<body>
+  <section id="index" class="screen index">
+    <h1>饭票二维码核销系统 UI V2 原型</h1>
+    <p class="muted">使用 query 参数切换画板，例如 ?screen=desktop-dashboard。</p>
+    <a href="?screen=desktop-dashboard">桌面端：数据总览</a>
+    <a href="?screen=desktop-tickets">桌面端：饭票记录</a>
+    <a href="?screen=desktop-create">桌面端：饭票生成</a>
+    <a href="?screen=desktop-bindings">桌面端：企微用户绑定</a>
+    <a href="?screen=desktop-ops">桌面端：系统设置与日志</a>
+    <a href="?screen=desktop-users">桌面端：权限管理</a>
+    <a href="?screen=desktop-logs">桌面端：日志中心</a>
+    <a href="?screen=mobile-admin">移动端：后台工作台</a>
+    <a href="?screen=mobile-tickets">移动端：饭票记录</a>
+    <a href="?screen=mobile-create">移动端：饭票生成</a>
+    <a href="?screen=mobile-bindings">移动端：企微用户绑定</a>
+    <a href="?screen=mobile-ops">移动端：系统运维</a>
+    <a href="?screen=mobile-verify">移动端：扫码核销结果</a>
+    <a href="?screen=mobile-balance">移动端：用户饭卡余额</a>
+    <a href="?screen=ticket-card">饭票二维码票图</a>
+  </section>
+
+  <section id="desktop-dashboard" class="screen">
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand"><div class="logo">IT</div><div><strong>饭票核销</strong><span>Meal Ticket Console</span></div></div>
+        <div class="nav-section"><div class="nav-title">饭票业务</div><div class="nav-item active"><span class="nav-dot"></span>数据总览</div><div class="nav-item"><span class="nav-dot"></span>饭票记录</div><div class="nav-item"><span class="nav-dot"></span>饭票生成</div></div>
+        <div class="nav-section"><div class="nav-title">饭卡管理</div><div class="nav-item"><span class="nav-dot"></span>企微用户绑定</div><div class="nav-item"><span class="nav-dot"></span>余额预警</div></div>
+        <div class="nav-section"><div class="nav-title">系统运维</div><div class="nav-item"><span class="nav-dot"></span>系统设置</div><div class="nav-item"><span class="nav-dot"></span>权限管理</div><div class="nav-item"><span class="nav-dot"></span>日志中心</div></div>
+      </aside>
+      <main class="main">
+        <header class="topbar"><div><h1>数据总览</h1><p>2026-06-05 23:20 · 系统管理员 · 行政部/IT部</p></div><div class="top-actions"><span class="pill">今日同步成功</span><span class="pill">核销时段：午餐 11:00-13:30</span><span class="btn primary">生成饭票</span></div></header>
+        <div class="content">
+          <div class="metrics">
+            <div class="metric"><span>今日生成饭票</span><strong>42</strong><small>较昨日 +18%</small><em class="badge">实时</em></div>
+            <div class="metric"><span>今日已核销</span><strong>31</strong><small>核销率 73.8%</small><em class="badge info">饭堂</em></div>
+            <div class="metric"><span>待核销</span><strong>9</strong><small>午餐 6 · 晚餐 3</small><em class="badge warn">关注</em></div>
+            <div class="metric"><span>低余额用户</span><strong>12</strong><small>低于 50 元</small><em class="badge danger">预警</em></div>
+          </div>
+          <div class="grid-2">
+            <section class="panel"><div class="panel-head"><div><h2>近 14 天饭票核销趋势</h2><p>按饭票生成、核销和作废统计</p></div><span class="pill">单位：张</span></div><div class="chart"><div class="bar" style="height:42%"></div><div class="bar" style="height:58%"></div><div class="bar" style="height:52%"></div><div class="bar" style="height:76%"></div><div class="bar" style="height:49%"></div><div class="bar" style="height:64%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:85%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:74%"></div><div class="bar" style="height:68%"></div><div class="bar" style="height:81%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:88%"></div></div></section>
+            <section class="panel"><div class="panel-head"><div><h2>餐别核销进度</h2><p>按当前日期统计</p></div></div><div class="progress-list"><div class="progress-row"><div><span>早餐</span><strong>92%</strong></div><div class="progress-track"><div class="progress-fill" style="width:92%"></div></div></div><div class="progress-row"><div><span>午餐</span><strong>68%</strong></div><div class="progress-track"><div class="progress-fill" style="width:68%"></div></div></div><div class="progress-row"><div><span>晚餐</span><strong>24%</strong></div><div class="progress-track"><div class="progress-fill" style="width:24%"></div></div></div><div class="progress-row"><div><span>审批触发成功率</span><strong>99%</strong></div><div class="progress-track"><div class="progress-fill" style="width:99%"></div></div></div></div></section>
+          </div>
+          <div class="grid-3" style="margin-top:16px">
+            <section class="mini-panel panel"><h3>最近审批触发</h3><p>张三 · IT部 · 2人3餐 · 已生成 6 张</p><p>黄云 · 研发部 · 1人1餐 · 已发送二维码</p><p>梁旭 · 研发部 · 访客 3人 · 待晚餐核销</p></section>
+            <section class="mini-panel panel"><h3>饭堂核销动态</h3><p>12:21 陈瑞明午餐核销成功</p><p>12:19 张豪午餐核销成功</p><p>12:16 丘强重复扫码，已拦截</p></section>
+            <section class="mini-panel panel"><h3>接口健康</h3><p>企业微信：正常 · 最近同步 23:18</p><p>万傲瑞达：正常 · 刷新余额 140 个</p><p>Nginx：正常 · 入口 18001</p></section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <section id="desktop-tickets" class="screen">
+    <div class="shell">
+      <aside class="sidebar"><div class="brand"><div class="logo">IT</div><div><strong>饭票核销</strong><span>Meal Ticket Console</span></div></div><div class="nav-section"><div class="nav-title">饭票业务</div><div class="nav-item"><span class="nav-dot"></span>数据总览</div><div class="nav-item active"><span class="nav-dot"></span>饭票记录</div><div class="nav-item"><span class="nav-dot"></span>饭票生成</div></div><div class="nav-section"><div class="nav-title">饭卡管理</div><div class="nav-item"><span class="nav-dot"></span>企微用户绑定</div></div></aside>
+      <main class="main"><header class="topbar"><div><h1>饭票记录</h1><p>行政核实、饭堂核销追踪、批量作废和导出报表</p></div><div class="top-actions"><span class="btn danger">批量作废</span><span class="btn">导出 Excel</span><span class="btn primary">刷新</span></div></header>
+        <div class="content"><div class="toolbar"><div class="input">姓名 / UserID / 部门 / 饭票编号 / 审批单号</div><div class="select">状态：全部</div><div class="select">餐别：全部</div><span class="btn primary">查询</span><span class="btn">重置</span></div><section class="panel"><table><thead><tr><th>饭票编号</th><th>审批单号</th><th>申请人</th><th>部门</th><th>餐别</th><th>用餐人</th><th>用餐日期</th><th>状态</th><th>核销时间</th><th class="right">操作</th></tr></thead><tbody><tr><td>MT20260605A93F</td><td>202606050004</td><td>张三</td><td>IT部</td><td>午餐</td><td>2 / 2</td><td>2026-06-05</td><td><span class="badge">已核销</span></td><td>2026-06-05 12:08:31</td><td class="right muted">查看</td></tr><tr><td>MT20260605B71C</td><td>202606050004</td><td>张三</td><td>IT部</td><td>晚餐</td><td>1 / 2</td><td>2026-06-05</td><td><span class="badge warn">未使用</span></td><td>-</td><td class="right">作废</td></tr><tr><td>MT20260605C20E</td><td>202606050008</td><td>黄云</td><td>研发部</td><td>午餐</td><td>1 / 1</td><td>2026-06-05</td><td><span class="badge">已核销</span></td><td>2026-06-05 12:11:05</td><td class="right muted">查看</td></tr><tr class="dim"><td>MT20260604D12A</td><td>202606040012</td><td>梁旭</td><td>研发部</td><td>早餐</td><td>1 / 1</td><td>2026-06-04</td><td><span class="badge danger">已过期</span></td><td>-</td><td class="right muted">已关闭</td></tr><tr><td>MT20260605E63B</td><td>手工生成</td><td>陈瑞明</td><td>品质部</td><td>午餐</td><td>3 / 3</td><td>2026-06-05</td><td><span class="badge warn">未使用</span></td><td>-</td><td class="right">作废</td></tr></tbody></table></section></div>
+      </main>
+    </div>
+  </section>
+
+  <section id="desktop-create" class="screen">
+    <div class="shell">
+      <aside class="sidebar"><div class="brand"><div class="logo">IT</div><div><strong>饭票核销</strong><span>Meal Ticket Console</span></div></div><div class="nav-section"><div class="nav-title">饭票业务</div><div class="nav-item"><span class="nav-dot"></span>数据总览</div><div class="nav-item"><span class="nav-dot"></span>饭票记录</div><div class="nav-item active"><span class="nav-dot"></span>饭票生成</div></div></aside>
+      <main class="main"><header class="topbar"><div><h1>饭票生成</h1><p>支持单人、多访客、多餐别批量生成，一人一餐一码</p></div><div class="top-actions"><span class="pill">预计生成：6 张</span><span class="btn primary">生成并发送</span></div></header>
+        <div class="content"><div class="split"><section class="panel"><div class="panel-head"><div><h2>申请信息</h2><p>行政手工生成或审批通过后自动带入</p></div></div><div class="form-grid"><div class="field"><label>申请人</label><strong>张三</strong></div><div class="field"><label>企业微信 UserID</label><strong>ZhangSan</strong></div><div class="field"><label>部门</label><strong>IT部</strong></div><div class="field"><label>用餐日期</label><strong>2026-06-06</strong></div><div class="field"><label>用餐人数</label><strong>2 人</strong></div><div class="field"><label>餐别</label><div class="check-row"><span class="check">早餐</span><span class="check">午餐</span><span class="check">晚餐</span></div></div><div class="field"><label>审批单号</label><strong>202606060015</strong></div><div class="field"><label>来源</label><strong>企业微信审批</strong></div><div class="field"><label>生成规则</label><strong>2 × 3 = 6 张</strong></div></div></section><aside class="summary-card"><span>本次生成</span><strong>6 张</strong><p class="muted">每位用餐人、每个餐别生成独立二维码。饭票自动继承用餐日期和核销时段限制。</p><div class="progress-list" style="margin-top:24px"><div class="progress-row"><div><span>字段完整度</span><strong>100%</strong></div><div class="progress-track"><div class="progress-fill" style="width:100%"></div></div></div><div class="progress-row"><div><span>发送企业微信</span><strong>准备就绪</strong></div><div class="progress-track"><div class="progress-fill" style="width:92%"></div></div></div></div></aside></div></div>
+      </main>
+    </div>
+  </section>
+
+  <section id="desktop-bindings" class="screen">
+    <div class="shell">
+      <aside class="sidebar"><div class="brand"><div class="logo">IT</div><div><strong>饭票核销</strong><span>Meal Ticket Console</span></div></div><div class="nav-section"><div class="nav-title">饭卡管理</div><div class="nav-item active"><span class="nav-dot"></span>企微用户绑定</div><div class="nav-item"><span class="nav-dot"></span>余额预警</div></div></aside>
+      <main class="main"><header class="topbar"><div><h1>企微用户绑定</h1><p>以企业微信用户为主表，绑定万傲离线消费卡并同步余额</p></div><div class="top-actions"><span class="pill">已绑定 140</span><span class="pill">未绑定 25</span><span class="btn primary">同步用户与余额</span></div></header>
+        <div class="content"><div class="toolbar" style="grid-template-columns:1fr 140px 150px auto auto"><div class="input">搜索姓名 / UserID / 部门 / 卡号</div><div class="select">绑定状态</div><div class="select">余额区间</div><span class="btn primary">查询</span><span class="btn">导出</span></div><section class="panel"><table><thead><tr><th>企微姓名</th><th>UserID</th><th>企微部门</th><th>已绑定万傲用户</th><th>万傲部门</th><th>饭卡号</th><th class="right">饭卡余额 ↓</th><th>状态</th><th class="right">操作</th></tr></thead><tbody><tr><td>万忠兵</td><td>WanZhongBing01</td><td>研发中心-工艺部</td><td>万忠兵 / CY00078</td><td>工艺部</td><td>517682178</td><td class="right">7752.00</td><td><span class="badge">已绑定</span></td><td class="right">重绑</td></tr><tr><td>黄云</td><td>HuangYun</td><td>研发中心-研发部</td><td>黄云 / CY00395</td><td>研发部</td><td>4279905444</td><td class="right">5002.00</td><td><span class="badge">已绑定</span></td><td class="right">重绑</td></tr><tr><td>张三</td><td>ZhangSan</td><td>IT部</td><td>张三 / EMP00001</td><td>IT部</td><td>1000000001</td><td class="right">1301.00</td><td><span class="badge">已绑定</span></td><td class="right">重绑</td></tr><tr><td>植栩年</td><td>XiuXi</td><td>设备运维部</td><td>植栩年 / CY00140</td><td>设备运维部</td><td>482215137</td><td class="right"><span class="badge danger">40.00</span></td><td><span class="badge">已绑定</span></td><td class="right">重绑</td></tr><tr class="dim"><td>丁类复配</td><td>DingLeiFuPei</td><td>丁类车间-复配</td><td>-</td><td>-</td><td>-</td><td class="right">-</td><td><span class="badge warn">未绑定</span></td><td class="right">绑定</td></tr></tbody></table></section></div>
+      </main>
+    </div>
+  </section>
+
+  <section id="desktop-ops" class="screen">
+    <div class="shell">
+      <aside class="sidebar"><div class="brand"><div class="logo">IT</div><div><strong>饭票核销</strong><span>Meal Ticket Console</span></div></div><div class="nav-section"><div class="nav-title">系统运维</div><div class="nav-item active"><span class="nav-dot"></span>系统设置</div><div class="nav-item"><span class="nav-dot"></span>权限管理</div><div class="nav-item"><span class="nav-dot"></span>日志中心</div></div></aside>
+      <main class="main"><header class="topbar"><div><h1>系统设置与日志</h1><p>企业微信、万傲瑞达、核销规则、账号权限和运行审计</p></div><div class="top-actions"><span class="btn primary">保存设置</span><span class="btn">查看日志</span></div></header>
+        <div class="content"><div class="ops-grid"><section class="panel"><div class="panel-head"><div><h2>核心配置</h2><p>敏感字段可隐藏显示，支持后台变更</p></div></div><div class="settings-list"><div class="setting-row"><span>公网地址</span><strong>https://meal.example.com</strong><span class="badge">正常</span></div><div class="setting-row"><span>企业微信 CorpID</span><strong>ww************</strong><span class="badge">已配置</span></div><div class="setting-row"><span>万傲平台地址</span><strong>https://wanoa.example.com</strong><span class="badge">在线</span></div><div class="setting-row"><span>同步间隔</span><strong>60 分钟</strong><span class="badge info">定时</span></div><div class="setting-row"><span>午餐核销</span><strong>11:00-13:30</strong><span class="badge warn">规则</span></div></div></section><section class="panel"><div class="panel-head"><div><h2>日志中心</h2><p>同步记录 / 访问记录 / 操作记录</p></div><span class="pill">最近 20 条</span></div><table><thead><tr><th>类型</th><th>状态</th><th>消息</th><th>时间</th></tr></thead><tbody><tr><td>同步记录</td><td><span class="badge">成功</span></td><td>已同步 377 个用户，刷新余额 140 个</td><td>23:18:02</td></tr><tr><td>访问记录</td><td><span class="badge">成功</span></td><td>张三午餐饭票核销</td><td>12:08:31</td></tr><tr><td>访问记录</td><td><span class="badge danger">失败</span></td><td>午餐二维码不在核销时段</td><td>15:42:10</td></tr><tr><td>操作记录</td><td><span class="badge info">变更</span></td><td>管理员修改万傲同步间隔</td><td>10:30:06</td></tr></tbody></table></section></div></div>
+      </main>
+    </div>
+  </section>
+
+  <section id="desktop-users" class="screen">
+    <div class="shell">
+      <aside class="sidebar"><div class="brand"><div class="logo">IT</div><div><strong>饭票核销</strong><span>Meal Ticket Console</span></div></div><div class="nav-section"><div class="nav-title">系统运维</div><div class="nav-item"><span class="nav-dot"></span>系统设置</div><div class="nav-item active"><span class="nav-dot"></span>权限管理</div><div class="nav-item"><span class="nav-dot"></span>日志中心</div></div></aside>
+      <main class="main"><header class="topbar"><div><h1>权限管理</h1><p>按管理员、行政制票、饭堂核销、行政查看进行权限分离</p></div><div class="top-actions"><span class="pill">活跃账号 8</span><span class="btn primary">新增账号</span></div></header>
+        <div class="content"><div class="toolbar" style="grid-template-columns:1fr 160px 160px auto auto"><div class="input">搜索账号 / 姓名 / 企业微信 UserID / 部门</div><div class="select">角色：全部</div><div class="select">状态：启用</div><span class="btn primary">查询</span><span class="btn">重置</span></div><section class="panel"><table><thead><tr><th>账号</th><th>姓名</th><th>企业微信 UserID</th><th>部门</th><th>角色权限</th><th>状态</th><th>最近登录</th><th class="right">操作</th></tr></thead><tbody><tr><td>admin</td><td>系统管理员</td><td>ZhangSan</td><td>IT部</td><td>管理员 / 行政制票 / 饭堂核销 / 行政查看</td><td><span class="badge">启用</span></td><td>2026-06-05 23:10</td><td class="right">编辑</td></tr><tr><td>canteen01</td><td>饭堂核销员</td><td>-</td><td>饭堂</td><td>饭堂核销</td><td><span class="badge">启用</span></td><td>2026-06-05 12:21</td><td class="right">编辑</td></tr><tr><td>hr01</td><td>行政专员</td><td>ChenCanTing</td><td>行政部</td><td>行政制票 / 行政查看</td><td><span class="badge">启用</span></td><td>2026-06-05 17:42</td><td class="right">编辑</td></tr><tr class="dim"><td>audit01</td><td>报表查看</td><td>-</td><td>行政部</td><td>行政查看</td><td><span class="badge warn">待确认</span></td><td>-</td><td class="right">编辑</td></tr></tbody></table></section><div class="grid-3" style="margin-top:16px"><section class="panel"><h2>饭堂核销</h2><p>仅可扫码进入核销结果页，不能查看设置和用户表。</p></section><section class="panel"><h2>行政查看</h2><p>可查看饭票记录、导出报表、查看用户绑定，不可修改。</p></section><section class="panel"><h2>管理员</h2><p>可维护接口配置、账号权限、用户绑定和同步任务。</p></section></div></div>
+      </main>
+    </div>
+  </section>
+
+  <section id="desktop-logs" class="screen">
+    <div class="shell">
+      <aside class="sidebar"><div class="brand"><div class="logo">IT</div><div><strong>饭票核销</strong><span>Meal Ticket Console</span></div></div><div class="nav-section"><div class="nav-title">系统运维</div><div class="nav-item"><span class="nav-dot"></span>系统设置</div><div class="nav-item"><span class="nav-dot"></span>权限管理</div><div class="nav-item active"><span class="nav-dot"></span>日志中心</div></div></aside>
+      <main class="main"><header class="topbar"><div><h1>日志中心</h1><p>同步记录、访问记录、操作记录分开筛选，便于审计追踪</p></div><div class="top-actions"><span class="pill">同步成功率 99%</span><span class="btn">导出日志</span><span class="btn primary">刷新</span></div></header>
+        <div class="content"><div class="metrics" style="grid-template-columns:repeat(3,1fr)"><div class="metric"><span>同步记录</span><strong>128</strong><small>最近成功 23:18</small></div><div class="metric"><span>访问记录</span><strong>3,842</strong><small>包含核销成功和失败原因</small></div><div class="metric"><span>操作记录</span><strong>416</strong><small>账号、设置、绑定变更</small></div></div><section class="panel"><div class="toolbar" style="grid-template-columns:150px 150px 1fr auto"><div class="select">同步记录</div><div class="select">状态：全部</div><div class="input">搜索消息 / 操作人 / IP / 饭票编号</div><span class="btn primary">查询</span></div><table><thead><tr><th>类型</th><th>状态</th><th>对象</th><th>消息</th><th>操作人</th><th>IP</th><th>时间</th></tr></thead><tbody><tr><td>同步记录</td><td><span class="badge">成功</span></td><td>all</td><td>已同步 377 个用户，刷新余额 140 个</td><td>系统任务</td><td>-</td><td>2026-06-05 23:18:02</td></tr><tr><td>访问记录</td><td><span class="badge">成功</span></td><td>MT20260605A93F</td><td>饭票核销成功</td><td>饭堂核销员</td><td>198.51.100.18</td><td>2026-06-05 12:08:31</td></tr><tr><td>访问记录</td><td><span class="badge danger">失败</span></td><td>MT20260605B71C</td><td>用餐日期不是当天，饭票不可核销</td><td>饭堂核销员</td><td>198.51.100.18</td><td>2026-06-05 15:42:10</td></tr><tr><td>操作记录</td><td><span class="badge info">变更</span></td><td>系统设置</td><td>修改午餐核销时间段为 11:00-13:30</td><td>系统管理员</td><td>198.51.100.20</td><td>2026-06-05 10:30:06</td></tr></tbody></table></section></div>
+      </main>
+    </div>
+  </section>
+
+  <section id="mobile-admin" class="screen">
+    <div class="phone-wrap"><div class="phone"><div class="mobile-head"><span class="pill">饭票核销 · 移动后台</span><h1>工作台</h1><p>系统管理员 · 今日饭票 42 张 · 已核销 31 张</p></div><div class="mobile-content"><div class="mobile-nav"><div>饭票记录</div><div>核销入口</div><div>用户绑定</div><div>日志</div></div><div class="metrics" style="grid-template-columns:1fr 1fr;margin:0"><div class="metric" style="height:108px"><span>待核销</span><strong>9</strong></div><div class="metric" style="height:108px"><span>低余额</span><strong>12</strong></div></div><section class="mobile-card"><h2>今日提醒</h2><p class="muted">午餐核销时段 11:00-13:30，当前有 6 张未核销。</p><p class="muted">万傲余额同步成功，刷新 140 个绑定用户。</p></section><section class="mobile-card"><h2>最近饭票</h2><table><tbody><tr><td>张三</td><td>午餐</td><td><span class="badge">已核销</span></td></tr><tr><td>黄云</td><td>午餐</td><td><span class="badge">已核销</span></td></tr><tr><td>梁旭</td><td>晚餐</td><td><span class="badge warn">未使用</span></td></tr></tbody></table></section></div></div></div>
+  </section>
+
+  <section id="mobile-tickets" class="screen">
+    <div class="phone-wrap"><div class="phone"><div class="mobile-head"><span class="pill">移动后台</span><h1>饭票记录</h1><p>查询、核实、作废和查看核销状态</p></div><div class="mobile-content"><div class="input">姓名 / 部门 / 饭票编号</div><div class="mobile-card"><h2>筛选</h2><div class="check-row"><span class="check">全部</span><span class="check off">未使用</span><span class="check off">已核销</span><span class="check off">已过期</span></div></div><section class="mobile-card"><h2>今日饭票</h2><table><tbody><tr><td><strong>张三</strong><br><span class="muted">IT部 · 午餐 · 2/2</span></td><td class="right"><span class="badge">已核销</span><br><span class="muted">12:08</span></td></tr><tr><td><strong>梁旭</strong><br><span class="muted">研发部 · 晚餐 · 1/1</span></td><td class="right"><span class="badge warn">未使用</span><br><span class="muted">可作废</span></td></tr><tr><td><strong>陈瑞明</strong><br><span class="muted">品质部 · 午餐 · 3/3</span></td><td class="right"><span class="badge">已核销</span><br><span class="muted">12:21</span></td></tr></tbody></table></section><section class="mobile-card"><h2>批量操作</h2><p class="muted">移动端默认隐藏复杂批量动作，管理员可进入桌面端批量作废和导出。</p></section></div></div></div>
+  </section>
+
+  <section id="mobile-create" class="screen">
+    <div class="phone-wrap"><div class="phone"><div class="mobile-head"><span class="pill">移动后台</span><h1>饭票生成</h1><p>移动端保留轻量生成能力，适合临时访客处理</p></div><div class="mobile-content"><section class="mobile-card"><h2>申请信息</h2><div class="field"><label>申请人</label><strong>张三</strong></div><div class="field"><label>部门</label><strong>IT部</strong></div><div class="field"><label>用餐日期</label><strong>2026-06-06</strong></div><div class="field"><label>用餐人数</label><strong>2 人</strong></div></section><section class="mobile-card"><h2>餐别</h2><div class="check-row"><span class="check">早餐</span><span class="check">午餐</span><span class="check">晚餐</span></div></section><div class="balance-hero"><span>预计生成</span><strong>6 张</strong><p class="muted">2 人 × 3 餐，一人一餐一码</p></div><span class="btn primary" style="justify-content:center;height:46px;border-radius:14px">生成并发送二维码</span></div></div></div>
+  </section>
+
+  <section id="mobile-bindings" class="screen">
+    <div class="phone-wrap"><div class="phone"><div class="mobile-head"><span class="pill">移动后台</span><h1>企微用户绑定</h1><p>以企微用户为主，搜索绑定万傲饭卡用户</p></div><div class="mobile-content"><div class="input">搜索姓名 / UserID / 卡号</div><div class="mobile-card"><h2>筛选</h2><div class="check-row"><span class="check">全部</span><span class="check off">已绑定</span><span class="check off">未绑定</span><span class="check off">低余额</span></div></div><section class="mobile-card"><h2>用户列表</h2><table><tbody><tr><td><strong>张三</strong><br><span class="muted">ZhangSan · IT部<br>EMP00001 · 1000000001</span></td><td class="right"><span class="badge">已绑定</span><br><strong>1301.00</strong></td></tr><tr><td><strong>植栩年</strong><br><span class="muted">XiuXi · 设备运维部<br>CY00140 · 482215137</span></td><td class="right"><span class="badge danger">低余额</span><br><strong>40.00</strong></td></tr><tr><td><strong>丁类复配</strong><br><span class="muted">DingLeiFuPei · 丁类车间</span></td><td class="right"><span class="badge warn">未绑定</span><br><span class="muted">绑定</span></td></tr></tbody></table></section></div></div></div>
+  </section>
+
+  <section id="mobile-ops" class="screen">
+    <div class="phone-wrap"><div class="phone"><div class="mobile-head"><span class="pill">移动后台</span><h1>系统运维</h1><p>移动端以查看和轻量触发同步为主</p></div><div class="mobile-content"><section class="mobile-card"><h2>接口状态</h2><table><tbody><tr><td>企业微信</td><td class="right"><span class="badge">正常</span></td></tr><tr><td>万傲瑞达</td><td class="right"><span class="badge">正常</span></td></tr><tr><td>同步任务</td><td class="right"><span class="badge info">60 分钟</span></td></tr></tbody></table></section><section class="mobile-card"><h2>快捷操作</h2><div class="check-row"><span class="check">同步用户与余额</span><span class="check off">查看权限</span><span class="check off">导出日志</span></div></section><section class="mobile-card"><h2>最近日志</h2><table><tbody><tr><td>同步记录</td><td class="right">刷新余额 140 个</td></tr><tr><td>访问记录</td><td class="right">饭票核销成功</td></tr><tr><td>操作记录</td><td class="right">修改核销时段</td></tr></tbody></table></section></div></div></div>
+  </section>
+
+  <section id="mobile-verify" class="screen">
+    <div class="phone-wrap"><div class="phone"><div class="mobile-head"><span class="pill">饭堂核销</span><h1>扫码结果</h1><p>扫码打开饭票后自动判断日期、餐别和状态</p></div><div class="mobile-content"><div class="scan-result"><div><div class="mark">✓</div><h2>核销成功</h2><p class="muted">饭票状态已更新为已核销</p></div></div><section class="mobile-card"><h2>饭票信息</h2><table><tbody><tr><td>申请人</td><td class="right">张三</td></tr><tr><td>部门</td><td class="right">IT部</td></tr><tr><td>用餐时间</td><td class="right">2026-06-05 · 午餐</td></tr><tr><td>用餐人</td><td class="right">第 2 人 / 共 2 人</td></tr><tr><td>饭票编号</td><td class="right">MT20260605A93F</td></tr></tbody></table></section><section class="mobile-card scan-result fail" style="min-height:150px"><div><div class="mark" style="width:56px;height:56px;font-size:28px">!</div><h2>失败态示例</h2><p class="muted">用餐日期不是当天，饭票不可核销</p></div></section></div></div></div>
+  </section>
+
+  <section id="mobile-balance" class="screen">
+    <div class="phone-wrap"><div class="phone"><div class="mobile-head"><span class="pill">企业微信自建应用</span><h1>我的饭卡</h1><p>张三 · IT部 · EMP00001</p></div><div class="mobile-content"><div class="balance-hero"><span>当前饭卡余额</span><strong>￥1301.00</strong><p class="muted">最近同步 2026-06-05 23:18:02</p></div><div class="balance-meta"><section class="mobile-card"><span class="muted">饭卡号</span><h2>1000000001</h2></section><section class="mobile-card"><span class="muted">账户状态</span><h2>正常</h2></section></div><section class="mobile-card"><h2>余额提醒</h2><p class="muted">低于 50 元时将通过企业微信发送提醒。</p><div class="progress-track"><div class="progress-fill" style="width:82%"></div></div></section><section class="mobile-card"><h2>最近饭票</h2><table><tbody><tr><td>午餐</td><td>2026-06-05</td><td><span class="badge">已核销</span></td></tr><tr><td>晚餐</td><td>2026-06-05</td><td><span class="badge warn">未使用</span></td></tr></tbody></table></section></div></div></div>
+  </section>
+
+  <section id="ticket-card" class="screen ticket-stage">
+    <div class="ticket"><div class="ticket-top"><div class="logo" style="margin:0 auto">IT</div><h1>聚能源饭票二维码</h1><p>一人一餐一码 · 当日当餐有效</p></div><div class="ticket-meta"><div><span>用餐日期</span><strong>2026-06-05</strong></div><div><span>餐别</span><strong>午餐 11:00-13:30</strong></div><div><span>申请人</span><strong>张三</strong></div><div><span>申请部门</span><strong>IT部</strong></div><div><span>用餐人</span><strong>第 2 人 / 共 2 人</strong></div><div><span>来源</span><strong>企业微信审批</strong></div></div><div class="qr-box"><div class="qr-grid" id="qrGrid"></div></div><div class="ticket-no">饭票编号：MT20260605A93F</div><div class="ticket-footer">版权归IT部门所有<br />扫码后由饭堂核销人员确认核销状态</div></div>
+  </section>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const screen = params.get("screen") || "index";
+    document.body.classList.add(`screen-${screen}`);
+    if (screen === "ticket-card") {
+      const grid = document.getElementById("qrGrid");
+      const dark = new Set([0,1,2,3,4,5,6,10,12,14,16,17,23,27,30,34,35,40,44,46,48,50,52,54,56,58,60,61,66,68,70,75,78,80,83,85,88,90,95,97,99,101,105,108,110,112,114,117,119,122,124,127,129,132,134,136,139,141,144,146,150,153,155,158,161,163,166,170,172,176,180,183,185,187,190,192,195,199,201,204,207,210,212,214,216,219,223,226,229,233,236,238,240,243,245,248,252,255,258,260,262,265,269,272,275,278,282,284,286,288]);
+      for (let i = 0; i < 289; i += 1) {
+        const cell = document.createElement("span");
+        if (dark.has(i) || (i % 19 === 0 && i % 5 !== 0)) cell.innerHTML = "<i></i>";
+        grid.appendChild(cell);
+      }
+    }
+  </script>
+</body>
+</html>

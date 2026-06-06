@@ -5,11 +5,14 @@ import { computed, createApp, reactive } from 'vue/dist/vue.esm-bundler.js'
 import {
   BadgeCheck,
   CalendarDays,
+  ChevronDown,
   ClipboardList,
+  CreditCard,
   Download,
-  FilePlus2,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   QrCode,
   RefreshCw,
@@ -17,7 +20,6 @@ import {
   Search,
   Settings,
   ShieldCheck,
-  Users,
   Utensils,
   X,
 } from 'lucide-vue-next'
@@ -25,19 +27,53 @@ import axios from 'axios'
 import './style.css'
 
 const api = axios.create({ baseURL: '/api' })
+const isTicketPage = location.pathname.startsWith('/ticket')
+const isMyCardPage = location.pathname.startsWith('/my-card')
 
 const state = reactive({
   token: localStorage.getItem('token') || '',
   me: null,
+  isMyCardPage,
   activeView: 'tickets',
-  login: { username: 'admin', password: 'admin123456' },
+  login: { username: '', password: '' },
   tickets: [],
+  ticketOverviewStats: {
+    total: 0,
+    statuses: { unused: 0, used: 0, expired: 0, void: 0 },
+    meals: {
+      breakfast: { count: 0, used: 0 },
+      lunch: { count: 0, used: 0 },
+      dinner: { count: 0, used: 0 },
+    },
+  },
   selectedTicketIds: [],
   users: [],
   userMode: 'list',
   settings: [],
   settingsForm: {},
-  filters: { status: '', keyword: '' },
+  cardUsers: [],
+  cardUserFilters: { keyword: '', binding_status: '' },
+  cardUserPagination: { page: 1, page_size: 20, total: 0 },
+  cardUserStats: { total: 0, bound: 0, unbound: 0 },
+  cardUserSort: { prop: '', order: '' },
+  wanoaOptions: [],
+  wanoaOptionLoading: false,
+  externalUserSyncing: false,
+  externalUserSyncMessage: '',
+  bindingDialog: {
+    visible: false,
+    row: null,
+    selected_wanoa_pin: '',
+  },
+  logType: 'sync',
+  syncLogs: [],
+  accessLogs: [],
+  auditLogs: [],
+  syncLogFilters: { source: '', status: '' },
+  accessLogFilters: { result: '', keyword: '' },
+  auditLogFilters: { action: '', target_type: '', keyword: '' },
+  logPagination: { page: 1, page_size: 20, total: 0 },
+  filters: { status: '', keyword: '', date_preset: '', meal_date_from: '', meal_date_to: '' },
   pagination: { page: 1, page_size: 20, total: 0 },
   form: {
     employee_name: '',
@@ -55,7 +91,17 @@ const state = reactive({
     department: '',
     roles: ['verifier'],
   },
-  publicToken: location.pathname.startsWith('/ticket')
+  myCard: {
+    loading: false,
+    error: '',
+    data: null,
+    oauthUrl: '',
+  },
+  publicBrand: {
+    company_name: '公司名称',
+    footer_text: '版权归IT部门所有',
+  },
+  publicToken: isTicketPage
     ? new URLSearchParams(location.search).get('token') || ''
     : '',
   generatedUrl: '',
@@ -70,6 +116,8 @@ const state = reactive({
   },
   loginError: '',
   mobileNavOpen: false,
+  sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === '1',
+  navGroupOpen: {},
   loading: false,
   saving: false,
 })
@@ -138,9 +186,90 @@ function formatRoles(roles) {
   return (roles || []).map((role) => labels[role] || role).join(' / ')
 }
 
+function formatDetail(detail) {
+  if (!detail || !Object.keys(detail).length) return '-'
+  return JSON.stringify(detail)
+}
+
+function formatMoney(value) {
+  if (value === null || value === undefined || value === '') return '-'
+  const amount = Number(value)
+  if (Number.isNaN(amount)) return value
+  return amount.toFixed(2)
+}
+
+function formatCurrency(value) {
+  const amount = formatMoney(value)
+  return amount === '-' ? '-' : `￥${amount}`
+}
+
+function formatDateInput(value) {
+  const date = new Date(value)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function cleanParams(params) {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== '' && value !== null && value !== undefined),
+  )
+}
+
+function ticketFilterParams() {
+  const { date_preset: datePreset, ...params } = state.filters
+  void datePreset
+  return cleanParams(params)
+}
+
+function setTicketDatePreset(preset) {
+  state.filters.date_preset = preset
+  if (!preset) {
+    state.filters.meal_date_from = ''
+    state.filters.meal_date_to = ''
+    return
+  }
+  const now = new Date()
+  let start = new Date(now)
+  let end = new Date(now)
+  if (preset === 'week') {
+    const day = now.getDay() || 7
+    start = new Date(now)
+    start.setDate(now.getDate() - day + 1)
+    end = new Date(start)
+    end.setDate(start.getDate() + 6)
+  } else if (preset === 'month') {
+    start = new Date(now.getFullYear(), now.getMonth(), 1)
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  }
+  state.filters.meal_date_from = formatDateInput(start)
+  state.filters.meal_date_to = formatDateInput(end)
+}
+
+function clearTicketDatePreset() {
+  state.filters.date_preset = ''
+}
+
+function isNavGroupActive(item) {
+  return Boolean(item.children?.some((child) => child.key === state.activeView))
+}
+
+function isNavGroupOpen(item) {
+  return !item.children || state.navGroupOpen[item.key] !== false
+}
+
+function openParentForView(key) {
+  for (const item of navItems.value) {
+    if (item.children?.some((child) => child.key === key)) {
+      state.navGroupOpen[item.key] = true
+    }
+  }
+}
+
 function setDefaultView() {
   if (hasRole('admin', 'hr', 'auditor')) {
-    state.activeView = 'tickets'
+    state.activeView = 'dashboard'
     return
   }
   if (hasRole('verifier')) state.activeView = 'verify'
@@ -149,16 +278,15 @@ function setDefaultView() {
 const navItems = computed(() =>
   [
     hasRole('admin', 'hr', 'auditor') && {
-      key: 'tickets',
-      label: '饭票管理',
+      key: 'ticketGroup',
+      label: '饭票业务',
       icon: QrCode,
-      subtitle: '查询、作废、导出',
-    },
-    hasRole('admin', 'hr') && {
-      key: 'create',
-      label: '饭票生成',
-      icon: FilePlus2,
-      subtitle: '单张饭票',
+      subtitle: '饭票全流程',
+      children: [
+        { key: 'dashboard', label: '数据总览', subtitle: '首页大屏' },
+        { key: 'tickets', label: '饭票记录', subtitle: '查询、作废、导出' },
+        hasRole('admin', 'hr') && { key: 'create', label: '饭票生成', subtitle: '单张饭票' },
+      ].filter(Boolean),
     },
     hasRole('verifier') && {
       key: 'verify',
@@ -166,24 +294,37 @@ const navItems = computed(() =>
       icon: BadgeCheck,
       subtitle: '饭堂核销',
     },
-    hasRole('admin') && {
-      key: 'settings',
-      label: '系统设置',
-      icon: Settings,
-      subtitle: '企业微信参数',
+    hasRole('admin', 'hr', 'auditor') && {
+      key: 'cardGroup',
+      label: '饭卡管理',
+      icon: CreditCard,
+      subtitle: '企微与万傲绑定',
+      children: [
+        { key: 'cardUsers', label: '企微用户绑定', subtitle: '用户表、饭卡映射' },
+      ],
     },
-    hasRole('admin') && {
-      key: 'users',
-      label: '权限管理',
-      icon: Users,
-      subtitle: '账号与角色',
+    hasRole('admin', 'hr', 'auditor') && {
+      key: 'opsGroup',
+      label: '系统运维',
+      icon: ClipboardList,
+      subtitle: '设置、权限、日志',
+      children: [
+        hasRole('admin') && { key: 'settings', label: '系统设置', subtitle: '接口与规则' },
+        hasRole('admin') && { key: 'users', label: '权限管理', subtitle: '账号与角色' },
+        { key: 'logs', label: '日志中心', subtitle: '同步、访问、操作' },
+      ].filter(Boolean),
     },
   ].filter(Boolean)
 )
 
-const activeTitle = computed(
-  () => navItems.value.find((item) => item.key === state.activeView)?.label || '后台管理'
-)
+const activeTitle = computed(() => {
+  for (const item of navItems.value) {
+    if (item.key === state.activeView) return item.label
+    const child = item.children?.find((entry) => entry.key === state.activeView)
+    if (child) return child.label
+  }
+  return '后台管理'
+})
 
 const canManageTickets = computed(() => hasRole('admin', 'hr'))
 
@@ -200,6 +341,27 @@ const ticketStats = computed(() => {
     if (Object.prototype.hasOwnProperty.call(stats, item.status)) stats[item.status] += 1
   }
   return stats
+})
+
+const dashboardBars = computed(() => {
+  const meals = [
+    { key: 'breakfast', label: '早餐' },
+    { key: 'lunch', label: '午餐' },
+    { key: 'dinner', label: '晚餐' },
+  ]
+  const counts = meals.map((meal) => state.ticketOverviewStats.meals[meal.key]?.count || 0)
+  const max = Math.max(1, ...counts)
+  return meals.map((meal, index) => {
+    const count = counts[index]
+    const used = state.ticketOverviewStats.meals[meal.key]?.used || 0
+    return {
+      ...meal,
+      count,
+      used,
+      percent: Math.max(8, Math.round((count / max) * 100)),
+      rate: count ? Math.round((used / count) * 100) : 0,
+    }
+  })
 })
 
 async function login() {
@@ -223,11 +385,16 @@ async function loadMe() {
 }
 
 async function loadInitialData() {
-  if (hasRole('admin', 'hr', 'auditor')) await loadTickets()
+  if (hasRole('admin', 'hr', 'auditor')) {
+    await loadTickets()
+    await loadTicketOverviewStats()
+    await loadCardUserStats()
+  }
   if (hasRole('admin')) {
     await loadSettings()
     await loadUsers()
   }
+  if (hasRole('admin', 'hr', 'auditor')) await loadCardUsers()
   if (state.verifyToken && hasRole('admin', 'verifier')) {
     state.activeView = 'verify'
     await processScannedText(state.verifyToken)
@@ -244,10 +411,38 @@ function logout() {
 
 function switchView(key) {
   state.activeView = key
+  openParentForView(key)
   state.mobileNavOpen = false
+  if (key === 'dashboard' && !state.tickets.length) loadTickets()
+  if (key === 'dashboard') {
+    loadTicketOverviewStats()
+    loadCardUserStats()
+  }
   if (key === 'tickets' && !state.tickets.length) loadTickets()
   if (key === 'settings' && !state.settings.length) loadSettings()
   if (key === 'users' && !state.users.length) loadUsers()
+  if (key === 'cardUsers') {
+    if (!state.cardUsers.length) loadCardUsers()
+  }
+  if (key === 'logs') loadLogs()
+}
+
+function handleNavParent(item) {
+  if (!item.children) {
+    switchView(item.key)
+    return
+  }
+  if (state.sidebarCollapsed) {
+    state.sidebarCollapsed = false
+    localStorage.setItem('sidebarCollapsed', '0')
+  }
+  state.navGroupOpen[item.key] = !isNavGroupOpen(item)
+}
+
+function toggleSidebarCollapsed() {
+  state.sidebarCollapsed = !state.sidebarCollapsed
+  state.mobileNavOpen = false
+  localStorage.setItem('sidebarCollapsed', state.sidebarCollapsed ? '1' : '0')
 }
 
 async function loadTickets() {
@@ -256,7 +451,7 @@ async function loadTickets() {
   try {
     const res = await api.get('/tickets', {
       params: {
-        ...state.filters,
+        ...ticketFilterParams(),
         page: state.pagination.page,
         page_size: state.pagination.page_size,
       },
@@ -270,6 +465,25 @@ async function loadTickets() {
   }
 }
 
+async function loadTicketOverviewStats() {
+  if (!hasRole('admin', 'hr', 'auditor')) return
+  const res = await api.get('/tickets/stats')
+  state.ticketOverviewStats = {
+    total: res.data.total || 0,
+    statuses: {
+      unused: res.data.statuses?.unused || 0,
+      used: res.data.statuses?.used || 0,
+      expired: res.data.statuses?.expired || 0,
+      void: res.data.statuses?.void || 0,
+    },
+    meals: {
+      breakfast: res.data.meals?.breakfast || { count: 0, used: 0 },
+      lunch: res.data.meals?.lunch || { count: 0, used: 0 },
+      dinner: res.data.meals?.dinner || { count: 0, used: 0 },
+    },
+  }
+}
+
 async function searchTickets() {
   state.pagination.page = 1
   await loadTickets()
@@ -278,6 +492,9 @@ async function searchTickets() {
 async function resetFilters() {
   state.filters.keyword = ''
   state.filters.status = ''
+  state.filters.date_preset = ''
+  state.filters.meal_date_from = ''
+  state.filters.meal_date_to = ''
   await searchTickets()
 }
 
@@ -296,6 +513,8 @@ async function loadSettings() {
   const res = await api.get('/settings')
   state.settings = res.data
   state.settingsForm = Object.fromEntries(res.data.map((item) => [item.key, item.value || '']))
+  state.publicBrand.company_name = state.settingsForm.ticket_company_name || state.publicBrand.company_name
+  state.publicBrand.footer_text = state.settingsForm.ticket_footer_text || state.publicBrand.footer_text
 }
 
 async function saveSettings() {
@@ -318,6 +537,7 @@ async function createTicket() {
   state.generatedToken = first?.qr_url ? new URL(first.qr_url).searchParams.get('token') || '' : ''
   ElMessage.success(`已生成 ${res.data.length} 张饭票`)
   await searchTickets()
+  await loadTicketOverviewStats()
 }
 
 async function loadUsers() {
@@ -353,6 +573,208 @@ async function saveUser(row) {
   await loadUsers()
 }
 
+async function loadCardUsers() {
+  if (!hasRole('admin', 'hr', 'auditor')) return
+  const res = await api.get('/integrations/users/wecom-bindings', {
+      params: {
+        ...state.cardUserFilters,
+        sort_by: state.cardUserSort.prop || undefined,
+        sort_order: state.cardUserSort.order || undefined,
+        page: state.cardUserPagination.page,
+        page_size: state.cardUserPagination.page_size,
+      },
+  })
+  state.cardUsers = res.data.items.map((item) => ({
+    ...item,
+  }))
+  state.cardUserPagination.total = res.data.total
+  state.cardUserPagination.page = res.data.page
+  state.cardUserPagination.page_size = res.data.page_size
+}
+
+async function loadCardUserStats() {
+  if (!hasRole('admin', 'hr', 'auditor')) return
+  const [totalRes, boundRes, unboundRes] = await Promise.all([
+    api.get('/integrations/users/wecom-bindings', { params: { page: 1, page_size: 1 } }),
+    api.get('/integrations/users/wecom-bindings', {
+      params: { binding_status: 'bound', page: 1, page_size: 1 },
+    }),
+    api.get('/integrations/users/wecom-bindings', {
+      params: { binding_status: 'unbound', page: 1, page_size: 1 },
+    }),
+  ])
+  state.cardUserStats.total = totalRes.data.total || 0
+  state.cardUserStats.bound = boundRes.data.total || 0
+  state.cardUserStats.unbound = unboundRes.data.total || 0
+}
+
+async function changeCardUserPage(page) {
+  state.cardUserPagination.page = page
+  await loadCardUsers()
+}
+
+async function searchCardUsers() {
+  state.cardUserPagination.page = 1
+  await loadCardUsers()
+}
+
+async function setCardBindingStatus(status) {
+  state.cardUserFilters.binding_status = status
+  await searchCardUsers()
+}
+
+async function handleCardUserSortChange({ prop, order }) {
+  state.cardUserSort.prop = prop || ''
+  state.cardUserSort.order = order || ''
+  state.cardUserPagination.page = 1
+  await loadCardUsers()
+}
+
+function runOnEnter(event, action) {
+  if (event.key === 'Enter') action()
+}
+
+function onTicketKeywordKeyup(event) {
+  runOnEnter(event, searchTickets)
+}
+
+function onCardUserKeywordKeyup(event) {
+  runOnEnter(event, searchCardUsers)
+}
+
+function onLogSearchKeyup(event) {
+  runOnEnter(event, searchLogs)
+}
+
+async function syncAllExternalUsers() {
+  if (state.externalUserSyncing) return
+  state.externalUserSyncing = true
+  state.externalUserSyncMessage = '正在同步企业微信、万傲用户并刷新饭卡余额...'
+  ElMessage.info(state.externalUserSyncMessage)
+  try {
+    const res = await api.post('/integrations/users/sync/all')
+    const message = res.data.message || `已同步 ${res.data.total || 0} 个用户`
+    state.externalUserSyncMessage = message
+    ElMessage.success(message)
+    await loadCardUsers()
+    await loadCardUserStats()
+    if (state.activeView === 'logs' && state.logType === 'sync') await loadLogs()
+  } finally {
+    state.externalUserSyncing = false
+  }
+}
+
+async function searchWanoaOptions(keyword) {
+  const text = String(keyword || '').trim()
+  if (!text) {
+    state.wanoaOptions = []
+    return
+  }
+  state.wanoaOptionLoading = true
+  try {
+    const res = await api.get('/integrations/users/candidates', {
+      params: {
+        source: 'wanoa',
+        keyword: text,
+        page: 1,
+        page_size: 20,
+      },
+    })
+    state.wanoaOptions = res.data.items
+  } finally {
+    state.wanoaOptionLoading = false
+  }
+}
+
+function openBindingDialog(row) {
+  state.bindingDialog.row = row
+  state.bindingDialog.selected_wanoa_pin = row.wanoa_pin || ''
+  state.wanoaOptions = []
+  if (row.wanoa_pin) {
+    state.wanoaOptions = [{
+      external_id: row.wanoa_pin,
+      name: row.wanoa_name,
+      department_name: row.wanoa_department,
+      card_no: row.wanoa_card_no,
+    }]
+  }
+  state.bindingDialog.visible = true
+}
+
+function closeBindingDialog() {
+  state.bindingDialog.visible = false
+  state.bindingDialog.row = null
+  state.bindingDialog.selected_wanoa_pin = ''
+  state.wanoaOptions = []
+}
+
+async function bindWanoaUser() {
+  const row = state.bindingDialog.row
+  if (!row) return
+  if (!state.bindingDialog.selected_wanoa_pin) {
+    ElMessage.warning('请选择万傲用户')
+    return
+  }
+  await api.post('/integrations/users/bindings', {
+    wecom_userid: row.wecom_userid,
+    wanoa_pin: state.bindingDialog.selected_wanoa_pin,
+  })
+  ElMessage.success('饭卡用户绑定已保存')
+  closeBindingDialog()
+  await loadCardUsers()
+  await loadCardUserStats()
+}
+
+function formatWanoaOption(option) {
+  return [
+    option.name,
+    option.external_id,
+    option.department_name,
+    option.card_no ? `卡号 ${option.card_no}` : '',
+  ].filter(Boolean).join(' / ')
+}
+
+async function loadLogs() {
+  if (!hasRole('admin', 'hr', 'auditor')) return
+  const params = {
+    page: state.logPagination.page,
+    page_size: state.logPagination.page_size,
+  }
+  let endpoint = '/logs/sync'
+  if (state.logType === 'sync') {
+    Object.assign(params, state.syncLogFilters)
+  } else if (state.logType === 'access') {
+    endpoint = '/logs/access'
+    Object.assign(params, state.accessLogFilters)
+  } else {
+    endpoint = '/logs/audit'
+    Object.assign(params, state.auditLogFilters)
+  }
+  const res = await api.get(endpoint, { params })
+  if (state.logType === 'sync') state.syncLogs = res.data.items
+  if (state.logType === 'access') state.accessLogs = res.data.items
+  if (state.logType === 'audit') state.auditLogs = res.data.items
+  state.logPagination.total = res.data.total
+  state.logPagination.page = res.data.page
+  state.logPagination.page_size = res.data.page_size
+}
+
+async function changeLogType(type) {
+  state.logType = type
+  state.logPagination.page = 1
+  await loadLogs()
+}
+
+async function changeLogPage(page) {
+  state.logPagination.page = page
+  await loadLogs()
+}
+
+async function searchLogs() {
+  state.logPagination.page = 1
+  await loadLogs()
+}
+
 async function voidTicket(row) {
   await ElMessageBox.confirm(`确认作废 ${row.employee_name} 的饭票？`, '作废确认', {
     confirmButtonText: '作废',
@@ -362,6 +784,7 @@ async function voidTicket(row) {
   await api.post(`/tickets/${row.id}/void`)
   ElMessage.success('饭票已作废')
   await loadTickets()
+  await loadTicketOverviewStats()
 }
 
 function handleTicketSelectionChange(rows) {
@@ -388,6 +811,7 @@ async function voidSelectedTickets() {
   )
   state.selectedTicketIds = []
   await loadTickets()
+  await loadTicketOverviewStats()
 }
 
 async function previewTicket() {
@@ -421,6 +845,7 @@ async function consumeTicket() {
   ElMessage.success('饭票核销成功')
   await previewTicket()
   await loadTickets()
+  await loadTicketOverviewStats()
 }
 
 async function processScannedText(text) {
@@ -438,6 +863,7 @@ async function processScannedText(text) {
     await previewTicket()
     await api.post('/tickets/verify/consume', { token })
     await previewTicket()
+    await loadTicketOverviewStats()
     state.verifyResult = {
       type: 'success',
       title: '核销成功',
@@ -463,7 +889,10 @@ async function processScannedText(text) {
 }
 
 async function exportReport() {
-  const res = await api.get('/reports/tickets.xlsx', { responseType: 'blob' })
+  const res = await api.get('/reports/tickets.xlsx', {
+    responseType: 'blob',
+    params: ticketFilterParams(),
+  })
   const url = URL.createObjectURL(res.data)
   const link = document.createElement('a')
   link.href = url
@@ -472,7 +901,55 @@ async function exportReport() {
   URL.revokeObjectURL(url)
 }
 
-if (!state.publicToken) {
+function myCardRedirectUri() {
+  const url = new URL(location.href)
+  url.searchParams.delete('code')
+  url.searchParams.delete('state')
+  return url.toString()
+}
+
+async function loadPublicBrand() {
+  try {
+    const res = await api.get('/settings/public-brand')
+    state.publicBrand.company_name = res.data.company_name || state.publicBrand.company_name
+    state.publicBrand.footer_text = res.data.footer_text || state.publicBrand.footer_text
+  } catch {
+    // Public brand is decorative; keep defaults if the request fails.
+  }
+}
+
+async function loadMyCard() {
+  state.myCard.loading = true
+  state.myCard.error = ''
+  await loadPublicBrand()
+  const params = new URLSearchParams(location.search)
+  const code = params.get('code')
+  try {
+    if (!code) {
+      const res = await api.get('/wecom/oauth-url', {
+        params: { redirect_uri: myCardRedirectUri() },
+      })
+      if (!res.data?.url) throw new Error('企业微信授权地址生成失败')
+      state.myCard.oauthUrl = res.data.url
+      location.replace(res.data.url)
+      return
+    }
+    const res = await api.get('/wecom/card-balance', { params: { code } })
+    if (res.data?.status !== 'success') {
+      throw new Error(res.data?.message || '读取饭卡余额失败，请从企业微信自建应用重新打开')
+    }
+    state.myCard.data = res.data
+  } catch (error) {
+    state.myCard.error =
+      error.response?.data?.detail || error.message || '读取饭卡余额失败，请从企业微信自建应用重新打开'
+  } finally {
+    state.myCard.loading = false
+  }
+}
+
+if (state.isMyCardPage) {
+  loadMyCard()
+} else if (!state.publicToken) {
   if (state.token) {
     loadMe()
       .then(async () => {
@@ -487,11 +964,14 @@ const App = {
   components: {
     BadgeCheck,
     CalendarDays,
+    ChevronDown,
     ClipboardList,
+    CreditCard,
     Download,
-    FilePlus2,
     LogOut,
     Menu,
+    PanelLeftClose,
+    PanelLeftOpen,
     Plus,
     QrCode,
     RefreshCw,
@@ -499,7 +979,6 @@ const App = {
     Search,
     Settings,
     ShieldCheck,
-    Users,
     Utensils,
     X,
   },
@@ -509,14 +988,18 @@ const App = {
       navItems,
       activeTitle,
       ticketStats,
+      dashboardBars,
       canManageTickets,
       roleDefinitions,
+      hasRole,
       login,
       logout,
       switchView,
       loadTickets,
       searchTickets,
       resetFilters,
+      setTicketDatePreset,
+      clearTicketDatePreset,
       changePage,
       changePageSize,
       loadSettings,
@@ -524,6 +1007,17 @@ const App = {
       loadUsers,
       createUser,
       saveUser,
+      loadCardUsers,
+      changeCardUserPage,
+      handleCardUserSortChange,
+      setCardBindingStatus,
+      syncAllExternalUsers,
+      searchWanoaOptions,
+      bindWanoaUser,
+      loadLogs,
+      changeLogType,
+      changeLogPage,
+      searchLogs,
       createTicket,
       voidTicket,
       handleTicketSelectionChange,
@@ -531,16 +1025,107 @@ const App = {
       previewTicket,
       consumeTicket,
       exportReport,
+      loadMyCard,
       formatMeal,
       formatStatus,
       formatDateTime,
       statusTag,
       sourceLabel,
       formatRoles,
+      formatDetail,
+      formatMoney,
+      formatCurrency,
+      formatWanoaOption,
+      isNavGroupActive,
+      isNavGroupOpen,
+      handleNavParent,
+      toggleSidebarCollapsed,
+      openBindingDialog,
+      closeBindingDialog,
+      onTicketKeywordKeyup,
+      onCardUserKeywordKeyup,
+      onLogSearchKeyup,
     }
   },
   template: `
-    <main v-if="state.publicToken" class="ticket-page">
+    <main v-if="state.isMyCardPage" class="my-card-page">
+      <section class="my-card-shell">
+        <div class="my-card-head">
+          <span class="soft-pill">企业微信自建应用</span>
+          <h1>我的饭卡</h1>
+          <strong class="mobile-company-name">{{ state.publicBrand.company_name }}</strong>
+        </div>
+
+        <section v-if="state.myCard.loading" class="mobile-card-panel balance-loading">
+          <RefreshCw :size="28" />
+          <strong>正在读取饭卡余额</strong>
+        </section>
+
+        <section v-else-if="state.myCard.error" class="mobile-card-panel balance-error">
+          <ShieldCheck :size="34" />
+          <strong>无法读取饭卡</strong>
+          <span>{{ state.myCard.error }}</span>
+          <a v-if="state.myCard.oauthUrl" class="mobile-primary-action" :href="state.myCard.oauthUrl">
+            重新授权
+          </a>
+        </section>
+
+        <template v-else-if="state.myCard.data">
+          <section class="balance-hero-card" :class="{ warning: Number(state.myCard.data.balance || 0) < 50 }">
+            <span>当前饭卡余额</span>
+            <strong>{{ formatCurrency(state.myCard.data.balance) }}</strong>
+          </section>
+
+          <section class="mobile-card-panel identity-panel">
+            <h2>{{ state.myCard.data.wecom_name || state.myCard.data.wecom_userid }}</h2>
+            <dl>
+              <div>
+                <dt>企业微信 UserID</dt>
+                <dd>{{ state.myCard.data.wecom_userid || '-' }}</dd>
+              </div>
+              <div>
+                <dt>部门</dt>
+                <dd>{{ state.myCard.data.wecom_department || '-' }}</dd>
+              </div>
+              <div>
+                <dt>万傲用户</dt>
+                <dd>{{ state.myCard.data.wanoa_name ? state.myCard.data.wanoa_name + ' / ' + state.myCard.data.wanoa_pin : '-' }}</dd>
+              </div>
+              <div>
+                <dt>饭卡号</dt>
+                <dd>{{ state.myCard.data.wanoa_card_no || '-' }}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="mobile-card-panel">
+            <h2>同步状态</h2>
+            <dl>
+              <div>
+                <dt>余额状态</dt>
+                <dd>{{ state.myCard.data.balance_status || state.myCard.data.status }}</dd>
+              </div>
+              <div>
+                <dt>最近同步</dt>
+                <dd>{{ formatDateTime(state.myCard.data.last_balance_at) }}</dd>
+              </div>
+              <div>
+                <dt>本次刷新</dt>
+                <dd>{{ formatDateTime(state.myCard.data.refreshed_at) }}</dd>
+              </div>
+              <div>
+                <dt>提示</dt>
+                <dd>{{ state.myCard.data.balance_message || '-' }}</dd>
+              </div>
+            </dl>
+          </section>
+        </template>
+
+        <footer class="mobile-copyright">{{ state.publicBrand.footer_text }}</footer>
+      </section>
+    </main>
+
+    <main v-else-if="state.publicToken" class="ticket-page">
       <section class="ticket-panel">
         <div class="brand-line centered">
           <Utensils :size="28" />
@@ -575,13 +1160,13 @@ const App = {
       </section>
     </main>
 
-    <main v-else class="app-shell">
+    <main v-else class="app-shell" :class="{ collapsed: state.sidebarCollapsed }">
       <div
         v-if="state.mobileNavOpen"
         class="mobile-backdrop"
         @click="state.mobileNavOpen = false"
       ></div>
-      <aside class="sidebar" :class="{ open: state.mobileNavOpen }">
+      <aside class="sidebar" :class="{ open: state.mobileNavOpen, collapsed: state.sidebarCollapsed }">
         <div class="brand-line compact">
           <Utensils :size="24" />
           <strong>饭票核销</strong>
@@ -590,33 +1175,176 @@ const App = {
           </button>
         </div>
         <nav>
-          <button
-            v-for="item in navItems"
-            :key="item.key"
-            type="button"
-            :class="{ active: state.activeView === item.key }"
-            @click="switchView(item.key)"
-          >
-            <component :is="item.icon" :size="18" />
-            <span>
-              <strong>{{ item.label }}</strong>
-              <small>{{ item.subtitle }}</small>
-            </span>
-          </button>
+          <div v-for="item in navItems" :key="item.key" class="nav-block">
+            <template v-if="item.children">
+              <button
+                type="button"
+                class="nav-title-button"
+                :class="{ open: isNavGroupOpen(item) }"
+                :title="item.label"
+                @click="handleNavParent(item)"
+              >
+                <span>{{ item.label }}</span>
+                <ChevronDown class="nav-caret" :size="14" />
+              </button>
+              <div v-if="isNavGroupOpen(item) && !state.sidebarCollapsed" class="sub-nav">
+                <button
+                  v-for="child in item.children"
+                  :key="child.key"
+                  type="button"
+                  class="sub-nav-item"
+                  :class="{ active: state.activeView === child.key }"
+                  :title="child.label"
+                  @click="switchView(child.key)"
+                >
+                  <span class="nav-dot"></span>
+                  <span>
+                    <strong>{{ child.label }}</strong>
+                  </span>
+                </button>
+              </div>
+            </template>
+            <button
+              v-else
+              type="button"
+              class="nav-parent"
+              :class="{ active: state.activeView === item.key, expanded: isNavGroupActive(item), open: isNavGroupOpen(item), grouped: item.children }"
+              :title="item.label"
+              @click="handleNavParent(item)"
+            >
+              <component :is="item.icon" :size="18" />
+              <span>
+                <strong>{{ item.label }}</strong>
+              </span>
+              <ChevronDown v-if="item.children" class="nav-caret" :size="16" />
+            </button>
+          </div>
         </nav>
       </aside>
 
       <section class="workspace">
         <header class="topbar">
-          <el-button class="mobile-menu-button" circle @click="state.mobileNavOpen = true">
-            <Menu :size="18" />
-          </el-button>
-          <div>
+          <div class="topbar-title">
+            <el-button class="mobile-menu-button" circle @click="state.mobileNavOpen = true">
+              <Menu :size="18" />
+            </el-button>
+            <el-button class="desktop-collapse-button" circle @click="toggleSidebarCollapsed">
+              <PanelLeftOpen v-if="state.sidebarCollapsed" :size="18" />
+              <PanelLeftClose v-else :size="18" />
+            </el-button>
+            <div>
+              <h1>{{ activeTitle }}</h1>
+              <p>{{ state.me?.name }} · {{ formatRoles(state.me?.roles) }}</p>
+            </div>
+          </div>
+          <div class="top-actions">
+            <span class="soft-pill">今日同步成功</span>
+            <span class="soft-pill">核销时段：午餐 11:00-13:30</span>
+            <el-button v-if="hasRole('admin', 'hr')" type="primary" @click="switchView('create')">
+              <Plus :size="16" /> 生成饭票
+            </el-button>
+            <el-button @click="logout"><LogOut :size="16" /> 退出</el-button>
+          </div>
+          <div class="legacy-top-title" aria-hidden="true">
             <h1>{{ activeTitle }}</h1>
             <p>{{ state.me?.name }} · {{ formatRoles(state.me?.roles) }}</p>
           </div>
-          <el-button @click="logout"><LogOut :size="16" /> 退出</el-button>
         </header>
+
+        <section v-if="state.activeView === 'dashboard'" class="content-area dashboard-content">
+          <div class="metric-row">
+            <section class="metric-card">
+              <span>饭票总数</span>
+              <strong>{{ state.ticketOverviewStats.total }}</strong>
+            </section>
+            <section class="metric-card">
+              <span>已使用</span>
+              <strong>{{ state.ticketOverviewStats.statuses.used }}</strong>
+            </section>
+            <section class="metric-card">
+              <span>未使用</span>
+              <strong>{{ state.ticketOverviewStats.statuses.unused }}</strong>
+            </section>
+            <section class="metric-card">
+              <span>饭卡用户</span>
+              <strong>{{ state.cardUserStats.total }}</strong>
+            </section>
+          </div>
+
+          <section class="dashboard-grid">
+            <section class="panel dashboard-chart-panel">
+              <div class="panel-head">
+                <div>
+                  <h2>餐别核销进度</h2>
+                </div>
+                <span class="soft-pill">单位：张</span>
+              </div>
+              <div class="meal-bars">
+                <div v-for="bar in dashboardBars" :key="bar.key" class="meal-bar-row">
+                  <div class="meal-bar-meta">
+                    <strong>{{ bar.label }}</strong>
+                    <span>{{ bar.used }} / {{ bar.count }} · {{ bar.rate }}%</span>
+                  </div>
+                  <div class="meal-bar-track">
+                    <span :style="{ width: bar.percent + '%' }"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel dashboard-side-panel">
+              <div class="panel-head">
+                <div>
+                  <h2>接口健康</h2>
+                </div>
+              </div>
+              <ul class="health-list">
+                <li><span>企业微信入口</span><strong>已配置</strong></li>
+                <li><span>饭卡余额同步</span><strong>{{ state.cardUserStats.total ? '正常' : '待同步' }}</strong></li>
+                <li><span>后台服务</span><strong>运行中</strong></li>
+              </ul>
+            </section>
+          </section>
+
+          <section class="dashboard-grid dashboard-grid-bottom">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>最近饭票动态</h2>
+                </div>
+                <el-button @click="switchView('tickets')">查看记录</el-button>
+              </div>
+              <ul class="activity-list">
+                <li v-for="ticket in state.tickets.slice(0, 5)" :key="ticket.id">
+                  <span>{{ formatDateTime(ticket.used_at || ticket.created_at) }} · {{ ticket.employee_name }} · {{ formatMeal(ticket.meal_type) }}</span>
+                  <strong>{{ formatStatus(ticket.status) }}</strong>
+                </li>
+              </ul>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>饭卡绑定概况</h2>
+                </div>
+                <el-button @click="switchView('cardUsers')">处理绑定</el-button>
+              </div>
+              <ul class="activity-list">
+                <li>
+                  <span>企微用户总数</span>
+                  <strong>{{ state.cardUserStats.total }}</strong>
+                </li>
+                <li>
+                  <span>已绑定</span>
+                  <strong>{{ state.cardUserStats.bound }}</strong>
+                </li>
+                <li>
+                  <span>未绑定</span>
+                  <strong>{{ state.cardUserStats.unbound }}</strong>
+                </li>
+              </ul>
+            </section>
+          </section>
+        </section>
 
         <section v-if="state.activeView === 'tickets'" class="content-area">
           <div class="metric-row">
@@ -642,7 +1370,6 @@ const App = {
             <div class="panel-head">
               <div>
                 <h2>饭票记录</h2>
-                <p>行政核实与饭票状态追踪</p>
               </div>
               <div class="head-actions">
                 <el-button @click="loadTickets"><RefreshCw :size="16" /> 刷新</el-button>
@@ -661,19 +1388,59 @@ const App = {
               </div>
             </div>
 
-            <div class="filters">
+            <div class="filters ticket-filters">
               <el-input
                 v-model="state.filters.keyword"
                 placeholder="姓名 / UserID / 部门 / 编号 / 审批单"
                 clearable
-                @keyup.enter="searchTickets"
+                @keyup="onTicketKeywordKeyup"
               />
               <el-select v-model="state.filters.status" placeholder="状态" clearable>
                 <el-option label="未使用" value="unused" />
-                <el-option label="已核销" value="used" />
+                <el-option label="已使用" value="used" />
                 <el-option label="已过期" value="expired" />
                 <el-option label="已作废" value="void" />
               </el-select>
+              <div class="date-quick">
+                <el-button
+                  :class="{ active: !state.filters.date_preset }"
+                  @click="setTicketDatePreset('')"
+                >
+                  全部
+                </el-button>
+                <el-button
+                  :class="{ active: state.filters.date_preset === 'today' }"
+                  @click="setTicketDatePreset('today')"
+                >
+                  今日
+                </el-button>
+                <el-button
+                  :class="{ active: state.filters.date_preset === 'week' }"
+                  @click="setTicketDatePreset('week')"
+                >
+                  本周
+                </el-button>
+                <el-button
+                  :class="{ active: state.filters.date_preset === 'month' }"
+                  @click="setTicketDatePreset('month')"
+                >
+                  本月
+                </el-button>
+              </div>
+              <el-date-picker
+                v-model="state.filters.meal_date_from"
+                value-format="YYYY-MM-DD"
+                type="date"
+                placeholder="开始日期"
+                @change="clearTicketDatePreset"
+              />
+              <el-date-picker
+                v-model="state.filters.meal_date_to"
+                value-format="YYYY-MM-DD"
+                type="date"
+                placeholder="结束日期"
+                @change="clearTicketDatePreset"
+              />
               <el-button type="primary" @click="searchTickets"><Search :size="16" /> 查询</el-button>
               <el-button @click="resetFilters">重置</el-button>
             </div>
@@ -685,30 +1452,27 @@ const App = {
               stripe
               @selection-change="handleTicketSelectionChange"
             >
-              <el-table-column v-if="canManageTickets" type="selection" width="46" fixed="left" />
-              <el-table-column prop="ticket_no" label="饭票编号" min-width="170" show-overflow-tooltip />
-              <el-table-column prop="approval_sp_no" label="审批单号" min-width="160" show-overflow-tooltip />
-              <el-table-column prop="employee_name" label="员工" width="110" />
-              <el-table-column prop="department" label="部门" width="130" show-overflow-tooltip />
-              <el-table-column label="餐别" width="90">
+              <el-table-column v-if="canManageTickets" type="selection" width="40" />
+              <el-table-column prop="ticket_no" label="饭票编号" min-width="150" show-overflow-tooltip />
+              <el-table-column prop="approval_sp_no" label="审批单号" min-width="135" show-overflow-tooltip />
+              <el-table-column prop="employee_name" label="申请人" width="96" />
+              <el-table-column prop="department" label="部门" width="92" show-overflow-tooltip />
+              <el-table-column label="餐别" width="72">
                 <template #default="{ row }">{{ formatMeal(row.meal_type) }}</template>
               </el-table-column>
-              <el-table-column label="用餐人" width="100">
+              <el-table-column label="用餐人" width="74">
                 <template #default="{ row }">{{ row.diner_index }} / {{ row.diner_count }}</template>
               </el-table-column>
-              <el-table-column prop="meal_date" label="用餐日期" width="120" />
-              <el-table-column label="来源" width="100">
-                <template #default="{ row }">{{ sourceLabel(row.source) }}</template>
-              </el-table-column>
-              <el-table-column label="状态" width="100">
+              <el-table-column prop="meal_date" label="用餐日期" width="108" />
+              <el-table-column label="状态" width="96">
                 <template #default="{ row }">
                   <el-tag :type="statusTag(row.status)">{{ formatStatus(row.status) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="核销时间" width="190" show-overflow-tooltip>
+              <el-table-column label="核销时间" width="154" show-overflow-tooltip>
                 <template #default="{ row }">{{ formatDateTime(row.used_at) }}</template>
               </el-table-column>
-              <el-table-column v-if="canManageTickets" label="操作" width="100" fixed="right">
+              <el-table-column v-if="canManageTickets" label="操作" width="76">
                 <template #default="{ row }">
                   <el-button
                     size="small"
@@ -742,7 +1506,6 @@ const App = {
             <div class="panel-head">
               <div>
                 <h2>生成饭票</h2>
-                <p>按用餐人数和餐别批量创建饭票</p>
               </div>
             </div>
 
@@ -802,7 +1565,6 @@ const App = {
             <div class="panel-head verify-head">
               <div>
                 <h2>扫码核销</h2>
-                <p>扫码打开饭票后自动核销</p>
               </div>
             </div>
 
@@ -845,8 +1607,284 @@ const App = {
             <section v-if="!state.verifyResult.title && !state.verifyPreview" class="verify-empty">
               <BadgeCheck :size="34" />
               <strong>等待扫码</strong>
-              <span>请使用手机相机或微信扫一扫饭票二维码</span>
             </section>
+          </section>
+        </section>
+
+        <section v-if="state.activeView === 'cardUsers'" class="content-area">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>企微用户绑定</h2>
+              </div>
+              <div class="head-actions">
+                <el-button @click="loadCardUsers"><RefreshCw :size="16" /> 刷新</el-button>
+              </div>
+            </div>
+
+            <div class="filters card-user-filters">
+              <el-input
+                v-model="state.cardUserFilters.keyword"
+                placeholder="搜索企微用户：姓名 / UserID / 部门"
+                clearable
+                @keyup="onCardUserKeywordKeyup"
+              />
+              <div class="binding-filter-tabs">
+                <button
+                  type="button"
+                  :class="{ active: !state.cardUserFilters.binding_status }"
+                  @click="setCardBindingStatus('')"
+                >全部</button>
+                <button
+                  type="button"
+                  :class="{ active: state.cardUserFilters.binding_status === 'bound' }"
+                  @click="setCardBindingStatus('bound')"
+                >已绑定</button>
+                <button
+                  type="button"
+                  :class="{ active: state.cardUserFilters.binding_status === 'unbound' }"
+                  @click="setCardBindingStatus('unbound')"
+                >未绑定</button>
+              </div>
+              <el-button type="primary" @click="searchCardUsers"><Search :size="16" /> 查询</el-button>
+            </div>
+
+            <el-table :data="state.cardUsers" stripe @sort-change="handleCardUserSortChange">
+              <el-table-column prop="wecom_name" label="企微姓名" width="104" sortable="custom" />
+              <el-table-column prop="wecom_userid" label="企微 UserID" min-width="132" show-overflow-tooltip sortable="custom" />
+              <el-table-column prop="wecom_department" label="企微部门" min-width="128" show-overflow-tooltip sortable="custom" />
+              <el-table-column prop="wanoa_name" label="已绑定万傲用户" min-width="158" show-overflow-tooltip sortable="custom">
+                <template #default="{ row }">
+                  {{ row.wanoa_name ? row.wanoa_name + ' / ' + row.wanoa_pin : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="wanoa_department" label="万傲部门" width="116" show-overflow-tooltip sortable="custom" />
+              <el-table-column prop="wanoa_card_no" label="饭卡号" width="124" show-overflow-tooltip sortable="custom" />
+              <el-table-column prop="last_balance" label="饭卡余额" width="112" sortable="custom">
+                <template #default="{ row }">
+                  {{ formatMoney(row.last_balance) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="binding_status" label="状态" width="88" sortable="custom">
+                <template #default="{ row }">
+                  <el-tag
+                    class="clickable-tag"
+                    :type="row.binding_status === 'active' ? 'success' : 'info'"
+                    @click="setCardBindingStatus(row.binding_status === 'active' ? 'bound' : 'unbound')"
+                  >
+                    {{ row.binding_status === 'active' ? '已绑定' : '未绑定' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column v-if="hasRole('admin')" label="操作" width="92">
+                <template #default="{ row }">
+                  <el-button type="primary" plain size="small" @click="openBindingDialog(row)">
+                    {{ row.binding_status === 'active' ? '重绑' : '绑定' }}
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div class="pagination-bar">
+              <el-pagination
+                v-model:current-page="state.cardUserPagination.page"
+                :page-size="state.cardUserPagination.page_size"
+                :total="state.cardUserPagination.total"
+                layout="total, prev, pager, next"
+                @current-change="changeCardUserPage"
+              />
+            </div>
+          </section>
+
+          <el-dialog
+            v-model="state.bindingDialog.visible"
+            title="绑定万傲用户"
+            width="520px"
+            class="binding-dialog"
+            @closed="closeBindingDialog"
+          >
+            <section v-if="state.bindingDialog.row" class="binding-summary">
+              <div>
+                <span>企微用户</span>
+                <strong>{{ state.bindingDialog.row.wecom_name }} / {{ state.bindingDialog.row.wecom_userid }}</strong>
+              </div>
+              <div>
+                <span>企微部门</span>
+                <strong>{{ state.bindingDialog.row.wecom_department || '-' }}</strong>
+              </div>
+              <div>
+                <span>当前绑定</span>
+                <strong>
+                  {{ state.bindingDialog.row.wanoa_name ? state.bindingDialog.row.wanoa_name + ' / ' + state.bindingDialog.row.wanoa_pin : '未绑定' }}
+                </strong>
+              </div>
+            </section>
+
+            <el-form label-position="top">
+              <el-form-item label="选择万傲用户">
+                <el-select
+                  v-model="state.bindingDialog.selected_wanoa_pin"
+                  filterable
+                  remote
+                  reserve-keyword
+                  clearable
+                  :remote-method="searchWanoaOptions"
+                  :loading="state.wanoaOptionLoading"
+                  placeholder="输入万傲用户名搜索"
+                >
+                  <el-option
+                    v-for="option in state.wanoaOptions"
+                    :key="option.external_id"
+                    :label="formatWanoaOption(option)"
+                    :value="option.external_id"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-form>
+
+            <template #footer>
+              <el-button @click="state.bindingDialog.visible = false">取消</el-button>
+              <el-button type="primary" @click="bindWanoaUser">
+                <Save :size="14" /> 保存绑定
+              </el-button>
+            </template>
+          </el-dialog>
+        </section>
+
+        <section v-if="state.activeView === 'logs'" class="content-area">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>日志中心</h2>
+              </div>
+              <el-button @click="loadLogs"><RefreshCw :size="16" /> 刷新</el-button>
+            </div>
+
+            <el-radio-group
+              v-model="state.logType"
+              class="log-switch"
+              @change="changeLogType"
+            >
+              <el-radio-button label="sync">同步记录</el-radio-button>
+              <el-radio-button label="access">访问记录</el-radio-button>
+              <el-radio-button label="audit">操作记录</el-radio-button>
+            </el-radio-group>
+
+            <div v-if="state.logType === 'sync'" class="filters">
+              <el-select v-model="state.syncLogFilters.source" placeholder="同步来源" clearable>
+                <el-option label="全部同步" value="all" />
+                <el-option label="万傲" value="wanoa" />
+                <el-option label="企业微信" value="wecom" />
+              </el-select>
+              <el-select v-model="state.syncLogFilters.status" placeholder="同步状态" clearable>
+                <el-option label="成功" value="success" />
+                <el-option label="失败" value="failed" />
+                <el-option label="运行中" value="running" />
+              </el-select>
+              <el-button type="primary" @click="searchLogs"><Search :size="16" /> 查询</el-button>
+            </div>
+
+            <div v-if="state.logType === 'access'" class="filters">
+              <el-select v-model="state.accessLogFilters.result" placeholder="访问结果" clearable>
+                <el-option label="成功" value="success" />
+                <el-option label="失败" value="failed" />
+              </el-select>
+              <el-input
+                v-model="state.accessLogFilters.keyword"
+                placeholder="饭票编号 / 申请人 / 原因 / IP"
+                clearable
+                @keyup="onLogSearchKeyup"
+              />
+              <el-button type="primary" @click="searchLogs"><Search :size="16" /> 查询</el-button>
+            </div>
+
+            <div v-if="state.logType === 'audit'" class="filters">
+              <el-input
+                v-model="state.auditLogFilters.action"
+                placeholder="操作动作"
+                clearable
+                @keyup="onLogSearchKeyup"
+              />
+              <el-input
+                v-model="state.auditLogFilters.target_type"
+                placeholder="对象类型"
+                clearable
+                @keyup="onLogSearchKeyup"
+              />
+              <el-input
+                v-model="state.auditLogFilters.keyword"
+                placeholder="关键字"
+                clearable
+                @keyup="onLogSearchKeyup"
+              />
+              <el-button type="primary" @click="searchLogs"><Search :size="16" /> 查询</el-button>
+            </div>
+
+            <el-table v-if="state.logType === 'sync'" :data="state.syncLogs" stripe>
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column label="来源" width="110">
+                <template #default="{ row }">
+                  {{ row.source === 'all' ? '全部' : row.source === 'wanoa' ? '万傲' : row.source === 'wecom' ? '企业微信' : row.source }}
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="110">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 'success' ? 'success' : row.status === 'failed' ? 'danger' : 'warning'">
+                    {{ row.status === 'success' ? '成功' : row.status === 'failed' ? '失败' : '运行中' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="total" label="数量" width="100" />
+              <el-table-column prop="message" label="消息" min-width="260" show-overflow-tooltip />
+              <el-table-column label="开始时间" min-width="170">
+                <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
+              </el-table-column>
+              <el-table-column label="结束时间" min-width="170">
+                <template #default="{ row }">{{ formatDateTime(row.finished_at) }}</template>
+              </el-table-column>
+            </el-table>
+
+            <el-table v-if="state.logType === 'access'" :data="state.accessLogs" stripe>
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column prop="ticket_no" label="饭票编号" min-width="150" show-overflow-tooltip />
+              <el-table-column prop="verifier_name" label="访问账号" width="120" />
+              <el-table-column label="结果" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="row.result === 'success' ? 'success' : 'danger'">
+                    {{ row.result === 'success' ? '成功' : '失败' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="reason" label="原因" min-width="220" show-overflow-tooltip />
+              <el-table-column prop="ip" label="IP" min-width="130" show-overflow-tooltip />
+              <el-table-column prop="user_agent" label="User-Agent" min-width="240" show-overflow-tooltip />
+              <el-table-column label="时间" min-width="170">
+                <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+              </el-table-column>
+            </el-table>
+
+            <el-table v-if="state.logType === 'audit'" :data="state.auditLogs" stripe>
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column prop="actor_name" label="操作人" width="120" />
+              <el-table-column prop="action" label="动作" min-width="150" show-overflow-tooltip />
+              <el-table-column prop="target_type" label="对象类型" min-width="130" show-overflow-tooltip />
+              <el-table-column prop="target_id" label="对象ID" min-width="130" show-overflow-tooltip />
+              <el-table-column label="详情" min-width="260" show-overflow-tooltip>
+                <template #default="{ row }">{{ formatDetail(row.detail) }}</template>
+              </el-table-column>
+              <el-table-column label="时间" min-width="170">
+                <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+              </el-table-column>
+            </el-table>
+
+            <div class="pagination-bar">
+              <el-pagination
+                v-model:current-page="state.logPagination.page"
+                :page-size="state.logPagination.page_size"
+                :total="state.logPagination.total"
+                layout="total, prev, pager, next"
+                @current-change="changeLogPage"
+              />
+            </div>
           </section>
         </section>
 
@@ -855,7 +1893,6 @@ const App = {
             <div class="panel-head">
               <div>
                 <h2>系统设置</h2>
-                <p>企业微信审批、二维码域名与字段映射</p>
               </div>
               <el-button type="primary" :loading="state.saving" @click="saveSettings">
                 <Settings :size="16" /> 保存设置
@@ -878,7 +1915,7 @@ const App = {
                   <el-form-item label="票面版权声明">
                     <el-input
                       v-model="state.settingsForm.ticket_footer_text"
-                      placeholder="版权归IT部所有，有问题联系欧阳祖宇"
+                      placeholder="版权归IT部门所有"
                     />
                   </el-form-item>
                 </el-form>
@@ -896,7 +1933,6 @@ const App = {
                   <el-form-item label="晚餐核销时间段">
                     <el-input v-model="state.settingsForm.meal_window_dinner" placeholder="17:00-19:30" />
                   </el-form-item>
-                  <p class="field-hint">留空表示该餐别不限制核销时间，格式为 HH:MM-HH:MM。</p>
                 </el-form>
               </section>
 
@@ -911,6 +1947,60 @@ const App = {
                   </el-form-item>
                   <el-form-item label="Secret">
                     <el-input v-model="state.settingsForm.wecom_secret" type="password" show-password />
+                  </el-form-item>
+                </el-form>
+              </section>
+
+              <section class="settings-panel">
+                <h3>万傲瑞达</h3>
+                <el-form label-position="top">
+                  <el-form-item label="平台地址">
+                    <el-input v-model="state.settingsForm.wanoa_base_url" placeholder="https://wanoa.example.com" />
+                  </el-form-item>
+                  <el-form-item label="授权用户名 ID">
+                    <el-input v-model="state.settingsForm.wanoa_client_id" placeholder="api-user" />
+                  </el-form-item>
+                  <el-form-item label="接口 access_token">
+                    <el-input v-model="state.settingsForm.wanoa_client_secret" type="password" show-password />
+                  </el-form-item>
+                  <el-form-item label="人员列表接口路径">
+                    <el-input v-model="state.settingsForm.wanoa_person_list_path" />
+                  </el-form-item>
+                  <el-form-item label="饭卡接口路径">
+                    <el-input v-model="state.settingsForm.wanoa_card_list_path" />
+                  </el-form-item>
+                  <el-form-item label="同步分页大小">
+                    <el-input v-model="state.settingsForm.wanoa_sync_page_size" />
+                  </el-form-item>
+                  <el-form-item label="启用定时同步">
+                    <el-switch
+                      v-model="state.settingsForm.external_user_sync_enabled"
+                      active-value="true"
+                      inactive-value="false"
+                    />
+                  </el-form-item>
+                  <el-form-item label="同步间隔分钟">
+                    <el-input v-model="state.settingsForm.external_user_sync_interval_minutes" />
+                  </el-form-item>
+                  <el-form-item label="启用自动绑定">
+                    <el-switch
+                      v-model="state.settingsForm.external_user_auto_bind_enabled"
+                      active-value="true"
+                      inactive-value="false"
+                    />
+                  </el-form-item>
+                  <el-form-item label="立即同步用户">
+                    <el-button
+                      v-if="hasRole('admin')"
+                      type="primary"
+                      :loading="state.externalUserSyncing"
+                      @click="syncAllExternalUsers"
+                    >
+                      <RefreshCw :size="16" /> 同步企业微信与万傲
+                    </el-button>
+                    <p v-if="state.externalUserSyncMessage" class="field-hint">
+                      {{ state.externalUserSyncMessage }}
+                    </p>
                   </el-form-item>
                 </el-form>
               </section>
@@ -967,7 +2057,6 @@ const App = {
             <div class="panel-head">
               <div>
                 <h2>权限管理</h2>
-                <p>账号、角色与企业微信 UserID</p>
               </div>
               <div class="head-actions">
                 <el-button @click="state.userMode = 'create'"><Plus :size="16" /> 新增用户</el-button>
@@ -983,7 +2072,7 @@ const App = {
                     <template #default="{ row }"><el-input v-model="row.name" /></template>
                   </el-table-column>
                   <el-table-column label="企业微信 UserID" min-width="180">
-                    <template #default="{ row }"><el-input v-model="row.wecom_userid" placeholder="用于关联企微员工" /></template>
+                    <template #default="{ row }"><el-input v-model="row.wecom_userid" placeholder="企业微信 UserID" /></template>
                   </el-table-column>
                   <el-table-column label="部门" min-width="150">
                     <template #default="{ row }"><el-input v-model="row.department" /></template>
@@ -1015,7 +2104,6 @@ const App = {
                 <div class="role-grid">
                   <section v-for="role in roleDefinitions" :key="role.code" class="role-card">
                     <strong>{{ role.label }}</strong>
-                    <span>{{ role.scope }}</span>
                   </section>
                 </div>
 
@@ -1031,8 +2119,7 @@ const App = {
                       <el-input v-model="state.userForm.name" />
                     </el-form-item>
                     <el-form-item label="企业微信 UserID（可选）">
-                      <el-input v-model="state.userForm.wecom_userid" placeholder="用于关联企业微信员工身份" />
-                      <p class="field-hint">用于补全部门、关联企业微信员工；后台登录仍使用账号密码。</p>
+                      <el-input v-model="state.userForm.wecom_userid" placeholder="企业微信 UserID" />
                     </el-form-item>
                     <el-form-item label="部门">
                       <el-input v-model="state.userForm.department" />

@@ -11,12 +11,13 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:8080"
     app_timezone: str = "Asia/Shanghai"
     ticket_company_name: str = "公司名称"
-    ticket_footer_text: str = "版权归IT部所有，有问题联系欧阳祖宇"
+    ticket_footer_text: str = "版权归IT部门所有"
     database_url: str = "postgresql+psycopg://meal:meal@postgres:5432/meal_ticket"
     redis_url: str = "redis://redis:6379/0"
     jwt_secret_key: str = Field(default="change-me-in-production")
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
+    initial_admin_password: str | None = None
 
     wecom_corp_id: str | None = None
     wecom_agent_id: str | None = None

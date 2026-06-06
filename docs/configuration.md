@@ -22,6 +22,7 @@ cp .env.example .env
 | `APP_BASE_URL` | 默认系统公网地址 | `https://meal.example.com` |
 | `APP_TIMEZONE` | 默认时区 | `Asia/Shanghai` |
 | `JWT_SECRET_KEY` | 登录 token 签名密钥 | 随机长字符串 |
+| `INITIAL_ADMIN_PASSWORD` | 首次初始化管理员密码；留空时自动生成并写入后端容器日志 | `随机长字符串` |
 | `BACKEND_WORKERS` | 后端 worker 数量 | `2` |
 | `HTTP_PORT` | 本机 HTTP 端口 | `80` |
 | `PUBLIC_HTTP_PORT` | 额外公开端口 | `18001` |
@@ -75,7 +76,7 @@ cp .env.example .env
 
 ## 安全配置建议
 
-- 生产环境必须修改默认管理员密码。
+- 首次登录后必须修改初始化管理员密码。
 - `JWT_SECRET_KEY` 必须使用随机长字符串。
 - `.env` 文件权限建议限制为部署用户可读。
 - 企业微信 Secret、回调 Token、EncodingAESKey 只应在后台设置或 `.env` 中保存，不应出现在 Git 历史。

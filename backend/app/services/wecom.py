@@ -131,6 +131,27 @@ class WeComClient:
             raise RuntimeError(f"获取企业微信用户信息失败: {data}")
         return data
 
+    async def get_userid_by_oauth_code(self, code: str) -> str:
+        token = await self.get_access_token()
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{self.base_url}/auth/getuserinfo",
+                params={"access_token": token, "code": code},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        if data.get("errcode") != 0:
+            raise RuntimeError(f"企业微信网页授权失败: {data}")
+        userid = (
+            data.get("UserId")
+            or data.get("userid")
+            or data.get("user_id")
+            or data.get("USERID")
+        )
+        if not userid:
+            raise RuntimeError("企业微信未返回成员 UserID，请确认从企业微信自建应用内打开")
+        return str(userid)
+
     async def get_department_names(self, department_ids: list[int]) -> list[str]:
         if not department_ids:
             return []
@@ -551,7 +572,7 @@ def build_ticket_card_png_bytes(
     ticket: MealTicket,
     verify_url: str,
     company_name: str = "公司名称",
-    footer_text: str = "版权归IT部所有，有问题联系欧阳祖宇",
+    footer_text: str = "版权归IT部门所有",
 ) -> bytes:
     width, height = 720, 1320
     background = Image.new("RGB", (width, height), "#eef5f4")

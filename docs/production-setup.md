@@ -59,14 +59,14 @@ vim .env
 docker compose up -d --build
 ```
 
-默认管理员：
+首次启动会创建默认管理员账号：
 
 ```text
 账号：admin
-密码：admin123456
+密码：使用 .env 中的 INITIAL_ADMIN_PASSWORD；留空时查看后端容器日志中的随机密码
 ```
 
-上线后请立即修改默认密码。
+首次登录后请立即修改管理员密码。
 
 ## 3. 后台系统设置
 
@@ -75,7 +75,7 @@ docker compose up -d --build
 - 系统公网地址：员工打开饭票、饭堂扫码核销使用的域名，例如 `https://meal.example.com`
 - 系统时区：默认 `Asia/Shanghai`
 - 票面公司名称：企业微信饭票图片顶部显示
-- 票面版权声明：企业微信饭票图片底部显示，默认“版权归IT部所有，有问题联系欧阳祖宇”
+- 票面版权声明：企业微信饭票图片底部显示，默认“版权归IT部门所有”
 - 企业微信 CorpID
 - 企业微信 AgentID
 - 企业微信 Secret

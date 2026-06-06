@@ -1,11 +1,11 @@
 from io import BytesIO
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
@@ -19,6 +19,10 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 @router.get("/tickets.xlsx")
 def export_tickets(
+    status: str | None = None,
+    keyword: str | None = None,
+    meal_date_from: date | None = None,
+    meal_date_to: date | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_roles("admin", "hr", "auditor")),
 ) -> StreamingResponse:
@@ -43,7 +47,29 @@ def export_tickets(
             "核销时间",
         ]
     )
-    rows = db.scalars(select(MealTicket).order_by(MealTicket.id.desc()).limit(5000)).all()
+    filters = []
+    if status:
+        filters.append(MealTicket.status == status)
+    if keyword:
+        like = f"%{keyword}%"
+        filters.append(
+            or_(
+                MealTicket.employee_name.ilike(like),
+                MealTicket.employee_userid.ilike(like),
+                MealTicket.department.ilike(like),
+                MealTicket.ticket_no.ilike(like),
+                MealTicket.approval_sp_no.ilike(like),
+            )
+        )
+    if meal_date_from:
+        filters.append(MealTicket.meal_date >= meal_date_from)
+    if meal_date_to:
+        filters.append(MealTicket.meal_date <= meal_date_to)
+
+    stmt = select(MealTicket).order_by(MealTicket.id.desc())
+    if filters:
+        stmt = stmt.where(*filters)
+    rows = db.scalars(stmt.limit(5000)).all()
     for item in rows:
         ws.append(
             [

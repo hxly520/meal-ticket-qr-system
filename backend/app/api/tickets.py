@@ -1,4 +1,5 @@
 from io import BytesIO
+from datetime import date
 
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -85,6 +86,8 @@ def create_batch(
 def list_tickets(
     status: str | None = None,
     keyword: str | None = None,
+    meal_date_from: date | None = None,
+    meal_date_to: date | None = None,
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),
@@ -107,6 +110,10 @@ def list_tickets(
                 MealTicket.approval_sp_no.ilike(like),
             )
         )
+    if meal_date_from:
+        filters.append(MealTicket.meal_date >= meal_date_from)
+    if meal_date_to:
+        filters.append(MealTicket.meal_date <= meal_date_to)
 
     total_stmt = select(func.count()).select_from(MealTicket)
     list_stmt = select(MealTicket).order_by(MealTicket.id.desc())
@@ -127,6 +134,43 @@ def list_tickets(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/stats")
+def ticket_stats(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "hr", "auditor")),
+) -> dict:
+    status_rows = db.execute(
+        select(MealTicket.status, func.count()).group_by(MealTicket.status)
+    ).all()
+    meal_rows = db.execute(
+        select(MealTicket.meal_type, MealTicket.status, func.count()).group_by(
+            MealTicket.meal_type,
+            MealTicket.status,
+        )
+    ).all()
+    statuses = {key: int(value) for key, value in status_rows}
+    meals = {
+        "breakfast": {"count": 0, "used": 0},
+        "lunch": {"count": 0, "used": 0},
+        "dinner": {"count": 0, "used": 0},
+    }
+    for meal_type, status, count in meal_rows:
+        meal = meals.setdefault(meal_type, {"count": 0, "used": 0})
+        meal["count"] += int(count)
+        if status == "used":
+            meal["used"] += int(count)
+    return {
+        "total": sum(statuses.values()),
+        "statuses": {
+            "unused": statuses.get("unused", 0),
+            "used": statuses.get("used", 0),
+            "expired": statuses.get("expired", 0),
+            "void": statuses.get("void", 0),
+        },
+        "meals": meals,
+    }
 
 
 @router.post("/{ticket_id}/void", response_model=TicketOut)

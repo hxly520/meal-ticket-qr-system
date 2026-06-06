@@ -28,6 +28,23 @@ SETTING_DEFINITIONS: dict[str, str] = {
     "wecom_field_department": "审批模板里的部门字段名",
     "wecom_field_reason": "审批模板里的申请原因字段名",
     "wecom_department_mapping": "企业微信部门ID到中文名称映射，每行一个，如：28=IT部",
+    "wanoa_base_url": "万傲瑞达 V6000/V6600 平台地址，如：https://wanoa.example.com",
+    "wanoa_client_id": "万傲 API 授权用户名 ID",
+    "wanoa_client_secret": "万傲 API access_token",
+    "wanoa_access_token": "万傲 API access_token，如与客户端密钥不同则填写",
+    "wanoa_person_list_path": "万傲人员列表接口路径",
+    "wanoa_card_list_path": "万傲饭卡列表接口路径",
+    "wanoa_balance_path": "万傲离线消费流水接口路径",
+    "wanoa_balance_method": "万傲余额查询接口方法，GET 或 POST",
+    "wanoa_balance_pin_param": "万傲余额接口人员编号参数名",
+    "wanoa_balance_card_param": "万傲余额接口卡号参数名；接口不需要卡号时留空",
+    "wanoa_balance_extra_params": "万傲余额接口额外查询参数，如：pageNo=1&pageSize=1",
+    "wanoa_balance_json_path": "万傲离线消费余额字段 JSON 路径，默认 data.0.balance",
+    "wanoa_balance_amount_unit": "万傲离线消费余额字段金额单位，默认 yuan",
+    "wanoa_sync_page_size": "万傲用户同步每页数量",
+    "external_user_sync_enabled": "是否启用企业微信与万傲用户定时同步，true/false",
+    "external_user_sync_interval_minutes": "企业微信与万傲用户定时同步间隔分钟",
+    "external_user_auto_bind_enabled": "是否启用候选用户自动关系绑定，true/false",
 }
 
 
@@ -51,6 +68,23 @@ DEFAULT_VALUES: dict[str, str | None] = {
     "wecom_field_department": settings.wecom_field_department,
     "wecom_field_reason": settings.wecom_field_reason,
     "wecom_department_mapping": "",
+    "wanoa_base_url": "",
+    "wanoa_client_id": "",
+    "wanoa_client_secret": "",
+    "wanoa_access_token": "",
+    "wanoa_person_list_path": "/api/v2/person/getPersonList",
+    "wanoa_card_list_path": "/api/v2/card/getCards",
+    "wanoa_balance_path": "/api/transaction/listPosTransaction",
+    "wanoa_balance_method": "GET",
+    "wanoa_balance_pin_param": "personPin",
+    "wanoa_balance_card_param": "",
+    "wanoa_balance_extra_params": "pageNo=1&pageSize=1",
+    "wanoa_balance_json_path": "data.0.balance",
+    "wanoa_balance_amount_unit": "yuan",
+    "wanoa_sync_page_size": "50",
+    "external_user_sync_enabled": "true",
+    "external_user_sync_interval_minutes": "60",
+    "external_user_auto_bind_enabled": "true",
 }
 
 
@@ -75,6 +109,23 @@ class RuntimeSettings:
     wecom_field_department: str
     wecom_field_reason: str
     wecom_department_mapping: str | None
+    wanoa_base_url: str | None
+    wanoa_client_id: str | None
+    wanoa_client_secret: str | None
+    wanoa_access_token: str | None
+    wanoa_person_list_path: str
+    wanoa_card_list_path: str
+    wanoa_balance_path: str | None
+    wanoa_balance_method: str
+    wanoa_balance_pin_param: str
+    wanoa_balance_card_param: str | None
+    wanoa_balance_extra_params: str | None
+    wanoa_balance_json_path: str
+    wanoa_balance_amount_unit: str
+    wanoa_sync_page_size: int
+    external_user_sync_enabled: bool
+    external_user_sync_interval_minutes: int
+    external_user_auto_bind_enabled: bool
 
 
 def seed_default_settings(db: Session) -> None:
@@ -142,7 +193,51 @@ def get_runtime_settings(db: Session) -> RuntimeSettings:
         wecom_field_department=value("wecom_field_department") or settings.wecom_field_department,
         wecom_field_reason=value("wecom_field_reason") or settings.wecom_field_reason,
         wecom_department_mapping=value("wecom_department_mapping"),
+        wanoa_base_url=value("wanoa_base_url"),
+        wanoa_client_id=value("wanoa_client_id"),
+        wanoa_client_secret=value("wanoa_client_secret"),
+        wanoa_access_token=value("wanoa_access_token"),
+        wanoa_person_list_path=value("wanoa_person_list_path") or "/api/v2/person/getPersonList",
+        wanoa_card_list_path=value("wanoa_card_list_path") or "/api/v2/card/getCards",
+        wanoa_balance_path=value("wanoa_balance_path") or "/api/transaction/listPosTransaction",
+        wanoa_balance_method=(value("wanoa_balance_method") or "GET").upper(),
+        wanoa_balance_pin_param=value("wanoa_balance_pin_param") or "personPin",
+        wanoa_balance_card_param=value("wanoa_balance_card_param"),
+        wanoa_balance_extra_params=value("wanoa_balance_extra_params"),
+        wanoa_balance_json_path=value("wanoa_balance_json_path") or "data.balance",
+        wanoa_balance_amount_unit=(value("wanoa_balance_amount_unit") or "cent").lower(),
+        wanoa_sync_page_size=parse_int(value("wanoa_sync_page_size"), default=50),
+        external_user_sync_enabled=parse_bool(
+            value("external_user_sync_enabled"),
+            default=True,
+        ),
+        external_user_sync_interval_minutes=max(
+            parse_int(value("external_user_sync_interval_minutes"), default=60),
+            5,
+        ),
+        external_user_auto_bind_enabled=parse_bool(
+            value("external_user_auto_bind_enabled"),
+            default=True,
+        ),
     )
+
+
+def parse_int(value: str | None, *, default: int) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_bool(value: str | None, *, default: bool) -> bool:
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on", "启用", "是"}:
+        return True
+    if text in {"0", "false", "no", "n", "off", "停用", "否"}:
+        return False
+    return default
 
 
 def parse_wecom_department_mapping(value: str | None) -> dict[int, str]:
