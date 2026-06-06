@@ -138,6 +138,9 @@ class LowBalanceAlertPreviewItem(BaseModel):
     last_balance_at: datetime | None = None
     last_pushed_at: datetime | None = None
     next_push_at: datetime | None = None
+    schedule_frequency: str
+    schedule_time: str
+    schedule_weekday: int
     due: bool
     title: str
     content: str
@@ -147,6 +150,9 @@ class LowBalanceAlertPreview(BaseModel):
     enabled: bool
     threshold: Decimal
     interval_minutes: int
+    frequency: str
+    weekday: int
+    push_time: str
     total: int
     due_total: int
     items: list[LowBalanceAlertPreviewItem]

@@ -48,6 +48,9 @@ SETTING_DEFINITIONS: dict[str, str] = {
     "low_balance_alert_enabled": "是否启用饭卡低余额企业微信提醒，true/false",
     "low_balance_alert_threshold": "低余额提醒判断金额",
     "low_balance_alert_interval_minutes": "同一用户低余额提醒间隔分钟",
+    "low_balance_alert_frequency": "低余额提醒推送周期，daily 或 weekly",
+    "low_balance_alert_weekday": "低余额提醒每周推送星期，0-6 表示周一到周日",
+    "low_balance_alert_time": "低余额提醒推送时间，格式 HH:MM",
     "low_balance_alert_title": "低余额提醒标题模板",
     "low_balance_alert_content": "低余额提醒内容模板",
 }
@@ -93,6 +96,9 @@ DEFAULT_VALUES: dict[str, str | None] = {
     "low_balance_alert_enabled": "false",
     "low_balance_alert_threshold": "20",
     "low_balance_alert_interval_minutes": "1440",
+    "low_balance_alert_frequency": "daily",
+    "low_balance_alert_weekday": "0",
+    "low_balance_alert_time": "11:00",
     "low_balance_alert_title": "饭卡余额提醒",
     "low_balance_alert_content": (
         "{name}，你的饭卡余额为 {balance} 元，低于 {threshold} 元，请及时处理。"
@@ -141,6 +147,9 @@ class RuntimeSettings:
     low_balance_alert_enabled: bool
     low_balance_alert_threshold: str
     low_balance_alert_interval_minutes: int
+    low_balance_alert_frequency: str
+    low_balance_alert_weekday: int
+    low_balance_alert_time: str
     low_balance_alert_title: str
     low_balance_alert_content: str
 
@@ -245,6 +254,12 @@ def get_runtime_settings(db: Session) -> RuntimeSettings:
             parse_int(value("low_balance_alert_interval_minutes"), default=1440),
             5,
         ),
+        low_balance_alert_frequency=normalize_frequency(value("low_balance_alert_frequency")),
+        low_balance_alert_weekday=min(
+            max(parse_int(value("low_balance_alert_weekday"), default=0), 0),
+            6,
+        ),
+        low_balance_alert_time=normalize_time(value("low_balance_alert_time")),
         low_balance_alert_title=value("low_balance_alert_title") or "饭卡余额提醒",
         low_balance_alert_content=(
             value("low_balance_alert_content")
@@ -269,6 +284,18 @@ def parse_bool(value: str | None, *, default: bool) -> bool:
     if text in {"0", "false", "no", "n", "off", "停用", "否"}:
         return False
     return default
+
+
+def normalize_frequency(value: str | None) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in {"daily", "weekly"} else "daily"
+
+
+def normalize_time(value: str | None) -> str:
+    text = str(value or "").strip()
+    if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", text):
+        return text
+    return "11:00"
 
 
 def parse_wecom_department_mapping(value: str | None) -> dict[int, str]:

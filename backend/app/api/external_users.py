@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -211,16 +212,43 @@ def list_wecom_user_bindings(
 
 @router.get("/low-balance-alert/preview", response_model=LowBalanceAlertPreview)
 def preview_low_balance_alert(
+    threshold: str | None = None,
+    frequency: str | None = None,
+    weekday: int | None = None,
+    push_time: str | None = None,
+    title: str | None = None,
+    content: str | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_roles("admin", "hr", "auditor")),
 ) -> LowBalanceAlertPreview:
     runtime = get_runtime_settings(db)
-    items = low_balance_alert_candidates(db, include_not_due=True)
-    threshold = items[0]["threshold"] if items else parse_decimal_or_zero(runtime.low_balance_alert_threshold)
+    runtime = replace(
+        runtime,
+        low_balance_alert_threshold=threshold or runtime.low_balance_alert_threshold,
+        low_balance_alert_frequency=normalize_frequency(
+            frequency or runtime.low_balance_alert_frequency
+        ),
+        low_balance_alert_weekday=min(
+            max(weekday if weekday is not None else runtime.low_balance_alert_weekday, 0),
+            6,
+        ),
+        low_balance_alert_time=normalize_time(push_time or runtime.low_balance_alert_time),
+        low_balance_alert_title=title if title is not None else runtime.low_balance_alert_title,
+        low_balance_alert_content=(
+            content if content is not None else runtime.low_balance_alert_content
+        ),
+    )
+    items = low_balance_alert_candidates(db, include_not_due=True, runtime=runtime)
+    threshold_value = (
+        items[0]["threshold"] if items else parse_decimal_or_zero(runtime.low_balance_alert_threshold)
+    )
     return LowBalanceAlertPreview(
         enabled=runtime.low_balance_alert_enabled,
-        threshold=threshold,
+        threshold=threshold_value,
         interval_minutes=runtime.low_balance_alert_interval_minutes,
+        frequency=runtime.low_balance_alert_frequency,
+        weekday=runtime.low_balance_alert_weekday,
+        push_time=runtime.low_balance_alert_time,
         total=len(items),
         due_total=len([item for item in items if item["due"]]),
         items=[LowBalanceAlertPreviewItem(**item) for item in items],
@@ -229,9 +257,24 @@ def preview_low_balance_alert(
 
 def parse_decimal_or_zero(value: str | None) -> Decimal:
     try:
-        return Decimal(str(value or "0").strip())
+        text = "".join(ch for ch in str(value or "0").strip() if ch.isdigit() or ch in {".", "-"})
+        return Decimal(text)
     except (InvalidOperation, ValueError):
         return Decimal("0")
+
+
+def normalize_frequency(value: str | None) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in {"daily", "weekly"} else "daily"
+
+
+def normalize_time(value: str | None) -> str:
+    text = str(value or "").strip()
+    if len(text) == 5 and text[2] == ":":
+        hour, minute = text.split(":", maxsplit=1)
+        if hour.isdigit() and minute.isdigit() and 0 <= int(hour) <= 23 and 0 <= int(minute) <= 59:
+            return text
+    return "11:00"
 
 
 @router.post("/bindings", response_model=CardUserBindingOut)

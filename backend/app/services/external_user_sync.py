@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -241,8 +242,9 @@ def low_balance_alert_candidates(
     db: Session,
     *,
     include_not_due: bool = True,
+    runtime: RuntimeSettings | None = None,
 ) -> list[dict[str, Any]]:
-    runtime = get_runtime_settings(db)
+    runtime = runtime or get_runtime_settings(db)
     threshold = parse_decimal(runtime.low_balance_alert_threshold)
     if threshold is None:
         return []
@@ -310,12 +312,11 @@ def build_low_balance_alert_item(
     now: datetime,
 ) -> dict[str, Any]:
     last_pushed_at = ensure_aware_datetime(row.low_balance_pushed_at)
-    next_push_at = (
-        last_pushed_at + timedelta(minutes=runtime.low_balance_alert_interval_minutes)
-        if last_pushed_at
-        else now
+    current_push_at, next_scheduled_at = low_balance_schedule(runtime, now)
+    due = current_push_at is not None and (
+        last_pushed_at is None or last_pushed_at < current_push_at
     )
-    due = next_push_at <= now
+    next_push_at = current_push_at if due and current_push_at else next_scheduled_at
     values = low_balance_template_values(row, threshold, now, runtime)
     return {
         "wecom_userid": row.wecom_userid,
@@ -327,6 +328,9 @@ def build_low_balance_alert_item(
         "last_balance_at": row.last_balance_at,
         "last_pushed_at": last_pushed_at,
         "next_push_at": next_push_at,
+        "schedule_frequency": runtime.low_balance_alert_frequency,
+        "schedule_time": runtime.low_balance_alert_time,
+        "schedule_weekday": runtime.low_balance_alert_weekday,
         "due": due,
         "title": render_template(runtime.low_balance_alert_title, values),
         "content": render_template(runtime.low_balance_alert_content, values),
@@ -373,9 +377,44 @@ def ensure_aware_datetime(value: datetime | None) -> datetime | None:
     return value
 
 
+def low_balance_schedule(
+    runtime: RuntimeSettings,
+    now: datetime,
+) -> tuple[datetime | None, datetime]:
+    tz = ZoneInfo(runtime.app_timezone or "Asia/Shanghai")
+    local_now = now.astimezone(tz)
+    hour, minute = parse_alert_time(runtime.low_balance_alert_time)
+    if runtime.low_balance_alert_frequency == "weekly":
+        scheduled_today = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if local_now.weekday() == runtime.low_balance_alert_weekday and local_now >= scheduled_today:
+            return scheduled_today.astimezone(timezone.utc), (
+                scheduled_today + timedelta(days=7)
+            ).astimezone(timezone.utc)
+        days_until = (runtime.low_balance_alert_weekday - local_now.weekday()) % 7
+        if days_until == 0:
+            days_until = 7
+        next_local = scheduled_today + timedelta(days=days_until)
+        return None, next_local.astimezone(timezone.utc)
+    scheduled_local = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if local_now < scheduled_local:
+        return None, scheduled_local.astimezone(timezone.utc)
+    return scheduled_local.astimezone(timezone.utc), (
+        scheduled_local + timedelta(days=1)
+    ).astimezone(timezone.utc)
+
+
+def parse_alert_time(value: str | None) -> tuple[int, int]:
+    text = str(value or "").strip()
+    if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", text):
+        return 11, 0
+    hour, minute = text.split(":", maxsplit=1)
+    return int(hour), int(minute)
+
+
 def parse_decimal(value: str | None) -> Decimal | None:
     try:
-        return Decimal(str(value or "").strip())
+        text = re.sub(r"[^0-9.\\-]", "", str(value or "").strip())
+        return Decimal(text)
     except (InvalidOperation, ValueError):
         return None
 
@@ -401,10 +440,7 @@ class ExternalUserSyncScheduler:
             try:
                 with SessionLocal() as db:
                     runtime = get_runtime_settings(db)
-                    interval_minutes = min(
-                        runtime.external_user_sync_interval_minutes,
-                        runtime.low_balance_alert_interval_minutes,
-                    )
+                    interval_minutes = min(runtime.external_user_sync_interval_minutes, 5)
                     if runtime.external_user_sync_enabled:
                         await run_user_sync(db, "all")
                     if runtime.low_balance_alert_enabled:

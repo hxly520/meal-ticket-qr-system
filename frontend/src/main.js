@@ -29,6 +29,15 @@ import './style.css'
 const api = axios.create({ baseURL: '/api' })
 const isTicketPage = location.pathname.startsWith('/ticket')
 const isMyCardPage = location.pathname.startsWith('/my-card')
+const weekdayOptions = [
+  { label: '周一', value: 0 },
+  { label: '周二', value: 1 },
+  { label: '周三', value: 2 },
+  { label: '周四', value: 3 },
+  { label: '周五', value: 4 },
+  { label: '周六', value: 5 },
+  { label: '周日', value: 6 },
+]
 
 const state = reactive({
   token: localStorage.getItem('token') || '',
@@ -178,6 +187,18 @@ function formatDateTime(value) {
   })
     .format(date)
     .replace(/\//g, '-')
+}
+
+function formatWeekday(value) {
+  return weekdayOptions.find((item) => item.value === Number(value))?.label || '周一'
+}
+
+function formatAlertSchedule(preview) {
+  if (!preview) return '-'
+  if (preview.frequency === 'weekly') {
+    return `每${formatWeekday(preview.weekday)} ${preview.push_time}`
+  }
+  return `每天 ${preview.push_time}`
 }
 
 function statusTag(status) {
@@ -711,9 +732,20 @@ async function syncAllExternalUsers() {
 async function previewLowBalanceAlerts() {
   state.lowBalancePreviewLoading = true
   try {
-    const res = await api.get('/integrations/users/low-balance-alert/preview')
+    const res = await api.get('/integrations/users/low-balance-alert/preview', {
+      params: {
+        threshold: state.settingsForm.low_balance_alert_threshold || undefined,
+        frequency: state.settingsForm.low_balance_alert_frequency || undefined,
+        weekday: state.settingsForm.low_balance_alert_weekday || undefined,
+        push_time: state.settingsForm.low_balance_alert_time || undefined,
+        title: state.settingsForm.low_balance_alert_title || undefined,
+        content: state.settingsForm.low_balance_alert_content || undefined,
+      },
+    })
     state.lowBalancePreview = res.data
-    ElMessage.success(`命中 ${res.data.total || 0} 人，当前应推送 ${res.data.due_total || 0} 人`)
+    ElMessage.success(
+      `命中 ${res.data.total || 0} 人，${formatAlertSchedule(res.data)} 应推送 ${res.data.due_total || 0} 人`
+    )
   } finally {
     state.lowBalancePreviewLoading = false
   }
@@ -1041,6 +1073,7 @@ const App = {
     return {
       state,
       navItems,
+      weekdayOptions,
       activeTitle,
       ticketStats,
       dashboardBars,
@@ -1088,6 +1121,7 @@ const App = {
       formatMeal,
       formatStatus,
       formatDateTime,
+      formatAlertSchedule,
       statusTag,
       sourceLabel,
       formatRoles,
@@ -2083,8 +2117,32 @@ const App = {
                   <el-form-item label="判断金额">
                     <el-input v-model="state.settingsForm.low_balance_alert_threshold" placeholder="20" />
                   </el-form-item>
-                  <el-form-item label="推送间隔分钟">
-                    <el-input v-model="state.settingsForm.low_balance_alert_interval_minutes" placeholder="1440" />
+                  <el-form-item label="推送周期">
+                    <el-radio-group v-model="state.settingsForm.low_balance_alert_frequency">
+                      <el-radio-button label="daily">每天</el-radio-button>
+                      <el-radio-button label="weekly">每周</el-radio-button>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item
+                    v-if="state.settingsForm.low_balance_alert_frequency === 'weekly'"
+                    label="推送星期"
+                  >
+                    <el-select v-model="state.settingsForm.low_balance_alert_weekday">
+                      <el-option
+                        v-for="item in weekdayOptions"
+                        :key="item.value"
+                        :label="item.label"
+                        :value="item.value"
+                      />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="推送时间">
+                    <el-time-picker
+                      v-model="state.settingsForm.low_balance_alert_time"
+                      format="HH:mm"
+                      value-format="HH:mm"
+                      placeholder="11:00"
+                    />
                   </el-form-item>
                   <el-form-item label="标题模板">
                     <el-input v-model="state.settingsForm.low_balance_alert_title" placeholder="饭卡余额提醒" />
@@ -2117,7 +2175,7 @@ const App = {
                 <div v-if="state.lowBalancePreview" class="preview-result">
                   <div class="preview-summary">
                     <span>命中 {{ state.lowBalancePreview.total }} 人</span>
-                    <strong>当前应推送 {{ state.lowBalancePreview.due_total }} 人</strong>
+                    <strong>{{ formatAlertSchedule(state.lowBalancePreview) }} 应推送 {{ state.lowBalancePreview.due_total }} 人</strong>
                   </div>
                   <el-table :data="state.lowBalancePreview.items" max-height="260" stripe>
                     <el-table-column prop="name" label="用户" width="100" show-overflow-tooltip />
