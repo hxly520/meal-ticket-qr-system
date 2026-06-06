@@ -195,10 +195,16 @@ function formatWeekday(value) {
 
 function formatAlertSchedule(preview) {
   if (!preview) return '-'
+  const weekendText = preview.weekend_enabled ? '，含周末' : '，周末不推送'
   if (preview.frequency === 'weekly') {
-    return `每${formatWeekday(preview.weekday)} ${preview.push_time}`
+    return `每${formatWeekday(preview.weekday)} ${preview.push_time}${weekendText}`
   }
-  return `每天 ${preview.push_time}`
+  return `每天 ${preview.push_time}${weekendText}`
+}
+
+function formatNextPush(row) {
+  if (row.due) return '现在'
+  return row.next_push_at ? formatDateTime(row.next_push_at) : '周末不推送'
 }
 
 function statusTag(status) {
@@ -209,6 +215,10 @@ function sourceLabel(source) {
   return { manual: '手工', batch: '批量', wecom: '企微审批', wecom_approval: '企微审批' }[source] || source
 }
 
+function formatAuditAction(action) {
+  return { low_balance_alert_push: '低余额提醒推送' }[action] || action
+}
+
 function formatRoles(roles) {
   const labels = { admin: '管理员', hr: '行政制票', verifier: '饭堂核销', auditor: '行政查看' }
   return (roles || []).map((role) => labels[role] || role).join(' / ')
@@ -216,6 +226,13 @@ function formatRoles(roles) {
 
 function formatDetail(detail) {
   if (!detail || !Object.keys(detail).length) return '-'
+  if ('balance' in detail && 'threshold' in detail && 'result' in detail) {
+    const result = detail.result === 'success' ? '成功' : '失败'
+    const name = detail.name || detail.card_no || '-'
+    const balance = formatCurrency(detail.balance)
+    const threshold = formatCurrency(detail.threshold)
+    return `${result} · ${name} · 余额 ${balance} / 阈值 ${threshold}`
+  }
   return JSON.stringify(detail)
 }
 
@@ -738,6 +755,7 @@ async function previewLowBalanceAlerts() {
         frequency: state.settingsForm.low_balance_alert_frequency || undefined,
         weekday: state.settingsForm.low_balance_alert_weekday || undefined,
         push_time: state.settingsForm.low_balance_alert_time || undefined,
+        weekend_enabled: state.settingsForm.low_balance_alert_weekend_enabled || undefined,
         title: state.settingsForm.low_balance_alert_title || undefined,
         content: state.settingsForm.low_balance_alert_content || undefined,
       },
@@ -1122,8 +1140,10 @@ const App = {
       formatStatus,
       formatDateTime,
       formatAlertSchedule,
+      formatNextPush,
       statusTag,
       sourceLabel,
+      formatAuditAction,
       formatRoles,
       formatDetail,
       formatMoney,
@@ -1964,7 +1984,9 @@ const App = {
             <el-table v-if="state.logType === 'audit'" :data="state.auditLogs" stripe>
               <el-table-column prop="id" label="ID" width="80" />
               <el-table-column prop="actor_name" label="操作人" width="120" />
-              <el-table-column prop="action" label="动作" min-width="150" show-overflow-tooltip />
+              <el-table-column label="动作" min-width="150" show-overflow-tooltip>
+                <template #default="{ row }">{{ formatAuditAction(row.action) }}</template>
+              </el-table-column>
               <el-table-column prop="target_type" label="对象类型" min-width="130" show-overflow-tooltip />
               <el-table-column prop="target_id" label="对象ID" min-width="130" show-overflow-tooltip />
               <el-table-column label="详情" min-width="260" show-overflow-tooltip>
@@ -2144,6 +2166,15 @@ const App = {
                       placeholder="11:00"
                     />
                   </el-form-item>
+                  <el-form-item label="周末推送">
+                    <el-switch
+                      v-model="state.settingsForm.low_balance_alert_weekend_enabled"
+                      active-value="true"
+                      inactive-value="false"
+                      active-text="允许"
+                      inactive-text="过滤"
+                    />
+                  </el-form-item>
                   <el-form-item label="标题模板">
                     <el-input v-model="state.settingsForm.low_balance_alert_title" placeholder="饭卡余额提醒" />
                   </el-form-item>
@@ -2184,7 +2215,7 @@ const App = {
                       <template #default="{ row }">{{ formatCurrency(row.balance) }}</template>
                     </el-table-column>
                     <el-table-column label="预计推送" width="154" show-overflow-tooltip>
-                      <template #default="{ row }">{{ row.due ? '现在' : formatDateTime(row.next_push_at) }}</template>
+                      <template #default="{ row }">{{ formatNextPush(row) }}</template>
                     </el-table-column>
                     <el-table-column prop="content" label="内容" min-width="220" show-overflow-tooltip />
                   </el-table>

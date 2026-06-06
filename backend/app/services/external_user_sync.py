@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
+from app.models.audit_log import AuditLog
 from app.models.external_user import CardUserBinding, ExternalSyncRun, ExternalUserCandidate
 from app.services.system_settings import RuntimeSettings, get_runtime_settings
 from app.services.wanoa import WanoaClient, sync_wanoa_candidates, upsert_candidate
@@ -298,8 +299,10 @@ async def send_low_balance_alerts(db: Session) -> tuple[int, int]:
             await client.send_text(row.wecom_userid, content)
         except Exception:  # noqa: BLE001
             failed += 1
+            write_low_balance_push_log(db, row, item, "failed")
             continue
         row.low_balance_pushed_at = now
+        write_low_balance_push_log(db, row, item, "success")
         sent += 1
     db.commit()
     return sent, failed
@@ -331,6 +334,7 @@ def build_low_balance_alert_item(
         "schedule_frequency": runtime.low_balance_alert_frequency,
         "schedule_time": runtime.low_balance_alert_time,
         "schedule_weekday": runtime.low_balance_alert_weekday,
+        "weekend_enabled": runtime.low_balance_alert_weekend_enabled,
         "due": due,
         "title": render_template(runtime.low_balance_alert_title, values),
         "content": render_template(runtime.low_balance_alert_content, values),
@@ -380,11 +384,13 @@ def ensure_aware_datetime(value: datetime | None) -> datetime | None:
 def low_balance_schedule(
     runtime: RuntimeSettings,
     now: datetime,
-) -> tuple[datetime | None, datetime]:
+) -> tuple[datetime | None, datetime | None]:
     tz = ZoneInfo(runtime.app_timezone or "Asia/Shanghai")
     local_now = now.astimezone(tz)
     hour, minute = parse_alert_time(runtime.low_balance_alert_time)
     if runtime.low_balance_alert_frequency == "weekly":
+        if not runtime.low_balance_alert_weekend_enabled and runtime.low_balance_alert_weekday >= 5:
+            return None, None
         scheduled_today = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if local_now.weekday() == runtime.low_balance_alert_weekday and local_now >= scheduled_today:
             return scheduled_today.astimezone(timezone.utc), (
@@ -396,11 +402,22 @@ def low_balance_schedule(
         next_local = scheduled_today + timedelta(days=days_until)
         return None, next_local.astimezone(timezone.utc)
     scheduled_local = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if not runtime.low_balance_alert_weekend_enabled and local_now.weekday() >= 5:
+        return None, next_daily_business_push(scheduled_local, runtime).astimezone(timezone.utc)
     if local_now < scheduled_local:
         return None, scheduled_local.astimezone(timezone.utc)
     return scheduled_local.astimezone(timezone.utc), (
-        scheduled_local + timedelta(days=1)
+        next_daily_business_push(scheduled_local + timedelta(days=1), runtime)
     ).astimezone(timezone.utc)
+
+
+def next_daily_business_push(scheduled_local: datetime, runtime: RuntimeSettings) -> datetime:
+    next_local = scheduled_local
+    if runtime.low_balance_alert_weekend_enabled:
+        return next_local
+    while next_local.weekday() >= 5:
+        next_local += timedelta(days=1)
+    return next_local
 
 
 def parse_alert_time(value: str | None) -> tuple[int, int]:
@@ -417,6 +434,34 @@ def parse_decimal(value: str | None) -> Decimal | None:
         return Decimal(text)
     except (InvalidOperation, ValueError):
         return None
+
+
+def write_low_balance_push_log(
+    db: Session,
+    row: CardUserBinding,
+    item: dict[str, Any],
+    result: str,
+) -> None:
+    db.add(
+        AuditLog(
+            actor_id=None,
+            action="low_balance_alert_push",
+            target_type="low_balance_alert",
+            target_id=row.wecom_userid,
+            detail={
+                "result": result,
+                "name": item.get("name"),
+                "department": item.get("department"),
+                "card_no": item.get("card_no"),
+                "balance": str(item.get("balance")),
+                "threshold": str(item.get("threshold")),
+                "schedule_frequency": item.get("schedule_frequency"),
+                "schedule_time": item.get("schedule_time"),
+                "schedule_weekday": item.get("schedule_weekday"),
+                "weekend_enabled": item.get("weekend_enabled"),
+            },
+        )
+    )
 
 
 class ExternalUserSyncScheduler:

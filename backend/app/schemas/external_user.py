@@ -141,6 +141,7 @@ class LowBalanceAlertPreviewItem(BaseModel):
     schedule_frequency: str
     schedule_time: str
     schedule_weekday: int
+    weekend_enabled: bool
     due: bool
     title: str
     content: str
@@ -153,6 +154,7 @@ class LowBalanceAlertPreview(BaseModel):
     frequency: str
     weekday: int
     push_time: str
+    weekend_enabled: bool
     total: int
     due_total: int
     items: list[LowBalanceAlertPreviewItem]

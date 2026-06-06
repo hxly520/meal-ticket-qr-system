@@ -216,6 +216,7 @@ def preview_low_balance_alert(
     frequency: str | None = None,
     weekday: int | None = None,
     push_time: str | None = None,
+    weekend_enabled: bool | None = None,
     title: str | None = None,
     content: str | None = None,
     db: Session = Depends(get_db),
@@ -233,6 +234,11 @@ def preview_low_balance_alert(
             6,
         ),
         low_balance_alert_time=normalize_time(push_time or runtime.low_balance_alert_time),
+        low_balance_alert_weekend_enabled=(
+            weekend_enabled
+            if weekend_enabled is not None
+            else runtime.low_balance_alert_weekend_enabled
+        ),
         low_balance_alert_title=title if title is not None else runtime.low_balance_alert_title,
         low_balance_alert_content=(
             content if content is not None else runtime.low_balance_alert_content
@@ -249,6 +255,7 @@ def preview_low_balance_alert(
         frequency=runtime.low_balance_alert_frequency,
         weekday=runtime.low_balance_alert_weekday,
         push_time=runtime.low_balance_alert_time,
+        weekend_enabled=runtime.low_balance_alert_weekend_enabled,
         total=len(items),
         due_total=len([item for item in items if item["due"]]),
         items=[LowBalanceAlertPreviewItem(**item) for item in items],
