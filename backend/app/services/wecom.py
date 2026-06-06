@@ -84,6 +84,26 @@ class WeComClient:
         if data.get("errcode") != 0:
             raise RuntimeError(f"发送企业微信消息失败: {data}")
 
+    async def send_text(self, touser: str, content: str) -> None:
+        if not self.runtime.wecom_agent_id:
+            raise RuntimeError("企业微信 AgentID 未配置")
+        token = await self.get_access_token()
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{self.base_url}/message/send",
+                params={"access_token": token},
+                json={
+                    "touser": touser,
+                    "msgtype": "text",
+                    "agentid": int(self.runtime.wecom_agent_id),
+                    "text": {"content": content},
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        if data.get("errcode") != 0:
+            raise RuntimeError(f"发送企业微信消息失败: {data}")
+
     async def upload_image(self, image_bytes: bytes, filename: str) -> str:
         token = await self.get_access_token()
         async with httpx.AsyncClient(timeout=15) as client:

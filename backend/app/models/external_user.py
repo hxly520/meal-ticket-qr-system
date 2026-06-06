@@ -54,6 +54,7 @@ class CardUserBinding(Base):
     balance_status: Mapped[str | None] = mapped_column(String(30))
     balance_message: Mapped[str | None] = mapped_column(String(255))
     last_balance_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    low_balance_pushed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     confirmed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

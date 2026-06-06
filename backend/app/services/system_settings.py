@@ -45,6 +45,11 @@ SETTING_DEFINITIONS: dict[str, str] = {
     "external_user_sync_enabled": "是否启用企业微信与万傲用户定时同步，true/false",
     "external_user_sync_interval_minutes": "企业微信与万傲用户定时同步间隔分钟",
     "external_user_auto_bind_enabled": "是否启用候选用户自动关系绑定，true/false",
+    "low_balance_alert_enabled": "是否启用饭卡低余额企业微信提醒，true/false",
+    "low_balance_alert_threshold": "低余额提醒判断金额",
+    "low_balance_alert_interval_minutes": "同一用户低余额提醒间隔分钟",
+    "low_balance_alert_title": "低余额提醒标题模板",
+    "low_balance_alert_content": "低余额提醒内容模板",
 }
 
 
@@ -85,6 +90,13 @@ DEFAULT_VALUES: dict[str, str | None] = {
     "external_user_sync_enabled": "true",
     "external_user_sync_interval_minutes": "60",
     "external_user_auto_bind_enabled": "true",
+    "low_balance_alert_enabled": "false",
+    "low_balance_alert_threshold": "20",
+    "low_balance_alert_interval_minutes": "1440",
+    "low_balance_alert_title": "饭卡余额提醒",
+    "low_balance_alert_content": (
+        "{name}，你的饭卡余额为 {balance} 元，低于 {threshold} 元，请及时处理。"
+    ),
 }
 
 
@@ -126,6 +138,11 @@ class RuntimeSettings:
     external_user_sync_enabled: bool
     external_user_sync_interval_minutes: int
     external_user_auto_bind_enabled: bool
+    low_balance_alert_enabled: bool
+    low_balance_alert_threshold: str
+    low_balance_alert_interval_minutes: int
+    low_balance_alert_title: str
+    low_balance_alert_content: str
 
 
 def seed_default_settings(db: Session) -> None:
@@ -218,6 +235,20 @@ def get_runtime_settings(db: Session) -> RuntimeSettings:
         external_user_auto_bind_enabled=parse_bool(
             value("external_user_auto_bind_enabled"),
             default=True,
+        ),
+        low_balance_alert_enabled=parse_bool(
+            value("low_balance_alert_enabled"),
+            default=False,
+        ),
+        low_balance_alert_threshold=value("low_balance_alert_threshold") or "20",
+        low_balance_alert_interval_minutes=max(
+            parse_int(value("low_balance_alert_interval_minutes"), default=1440),
+            5,
+        ),
+        low_balance_alert_title=value("low_balance_alert_title") or "饭卡余额提醒",
+        low_balance_alert_content=(
+            value("low_balance_alert_content")
+            or "{name}，你的饭卡余额为 {balance} 元，低于 {threshold} 元，请及时处理。"
         ),
     )
 

@@ -60,6 +60,8 @@ const state = reactive({
   wanoaOptionLoading: false,
   externalUserSyncing: false,
   externalUserSyncMessage: '',
+  lowBalancePreviewLoading: false,
+  lowBalancePreview: null,
   bindingDialog: {
     visible: false,
     row: null,
@@ -90,6 +92,11 @@ const state = reactive({
     wecom_userid: '',
     department: '',
     roles: ['verifier'],
+  },
+  resetPasswordDialog: {
+    visible: false,
+    row: null,
+    password: '',
   },
   myCard: {
     loading: false,
@@ -547,6 +554,14 @@ async function loadUsers() {
 }
 
 async function createUser() {
+  if (!state.userForm.username || !state.userForm.password || !state.userForm.name) {
+    ElMessage.warning('请填写账号、初始密码和姓名')
+    return
+  }
+  if (state.userForm.password.length < 8) {
+    ElMessage.warning('初始密码至少 8 位')
+    return
+  }
   await api.post('/auth/users', state.userForm)
   ElMessage.success('账号已创建')
   state.userForm = {
@@ -562,6 +577,10 @@ async function createUser() {
 }
 
 async function saveUser(row) {
+  if (!row.name || !row.roles?.length) {
+    ElMessage.warning('姓名和角色不能为空')
+    return
+  }
   await api.put(`/auth/users/${row.id}`, {
     name: row.name,
     wecom_userid: row.wecom_userid || '',
@@ -571,6 +590,31 @@ async function saveUser(row) {
   })
   ElMessage.success('账号权限已保存')
   await loadUsers()
+}
+
+function openResetPasswordDialog(row) {
+  state.resetPasswordDialog.visible = true
+  state.resetPasswordDialog.row = row
+  state.resetPasswordDialog.password = ''
+}
+
+function closeResetPasswordDialog() {
+  state.resetPasswordDialog.visible = false
+  state.resetPasswordDialog.row = null
+  state.resetPasswordDialog.password = ''
+}
+
+async function resetUserPassword() {
+  const row = state.resetPasswordDialog.row
+  const password = state.resetPasswordDialog.password
+  if (!row) return
+  if (!password || password.length < 8) {
+    ElMessage.warning('新密码至少 8 位')
+    return
+  }
+  await api.post(`/auth/users/${row.id}/reset-password`, { password })
+  ElMessage.success('密码已重置')
+  closeResetPasswordDialog()
 }
 
 async function loadCardUsers() {
@@ -661,6 +705,17 @@ async function syncAllExternalUsers() {
     if (state.activeView === 'logs' && state.logType === 'sync') await loadLogs()
   } finally {
     state.externalUserSyncing = false
+  }
+}
+
+async function previewLowBalanceAlerts() {
+  state.lowBalancePreviewLoading = true
+  try {
+    const res = await api.get('/integrations/users/low-balance-alert/preview')
+    state.lowBalancePreview = res.data
+    ElMessage.success(`命中 ${res.data.total || 0} 人，当前应推送 ${res.data.due_total || 0} 人`)
+  } finally {
+    state.lowBalancePreviewLoading = false
   }
 }
 
@@ -1007,11 +1062,15 @@ const App = {
       loadUsers,
       createUser,
       saveUser,
+      openResetPasswordDialog,
+      closeResetPasswordDialog,
+      resetUserPassword,
       loadCardUsers,
       changeCardUserPage,
       handleCardUserSortChange,
       setCardBindingStatus,
       syncAllExternalUsers,
+      previewLowBalanceAlerts,
       searchWanoaOptions,
       bindWanoaUser,
       loadLogs,
@@ -1145,12 +1204,18 @@ const App = {
           <Utensils :size="28" />
           <h1>饭票二维码核销系统</h1>
         </div>
-        <el-form label-position="top" @submit.prevent>
+        <el-form label-position="top" autocomplete="off" @submit.prevent>
           <el-form-item label="账号">
-            <el-input v-model="state.login.username" autocomplete="username" />
+            <el-input v-model="state.login.username" autocomplete="off" name="meal-ticket-login-user" />
           </el-form-item>
           <el-form-item label="密码">
-            <el-input v-model="state.login.password" type="password" autocomplete="current-password" show-password />
+            <el-input
+              v-model="state.login.password"
+              type="password"
+              autocomplete="new-password"
+              name="meal-ticket-login-pass"
+              show-password
+            />
           </el-form-item>
           <div v-if="state.loginError" class="login-error">{{ state.loginError }}</div>
           <el-button type="primary" class="full" @click="login">
@@ -1238,12 +1303,12 @@ const App = {
             </div>
           </div>
           <div class="top-actions">
-            <span class="soft-pill">今日同步成功</span>
-            <span class="soft-pill">核销时段：午餐 11:00-13:30</span>
-            <el-button v-if="hasRole('admin', 'hr')" type="primary" @click="switchView('create')">
+            <span v-if="state.activeView !== 'verify'" class="soft-pill">今日同步成功</span>
+            <span v-if="state.activeView !== 'verify'" class="soft-pill">核销时段：午餐 11:00-13:30</span>
+            <el-button v-if="state.activeView !== 'verify' && hasRole('admin', 'hr')" type="primary" @click="switchView('create')">
               <Plus :size="16" /> 生成饭票
             </el-button>
-            <el-button @click="logout"><LogOut :size="16" /> 退出</el-button>
+            <el-button v-if="state.activeView !== 'verify'" @click="logout"><LogOut :size="16" /> 退出</el-button>
           </div>
           <div class="legacy-top-title" aria-hidden="true">
             <h1>{{ activeTitle }}</h1>
@@ -2005,6 +2070,69 @@ const App = {
                 </el-form>
               </section>
 
+              <section class="settings-panel low-balance-panel">
+                <h3>低余额提醒</h3>
+                <el-form label-position="top">
+                  <el-form-item label="启用提醒">
+                    <el-switch
+                      v-model="state.settingsForm.low_balance_alert_enabled"
+                      active-value="true"
+                      inactive-value="false"
+                    />
+                  </el-form-item>
+                  <el-form-item label="判断金额">
+                    <el-input v-model="state.settingsForm.low_balance_alert_threshold" placeholder="20" />
+                  </el-form-item>
+                  <el-form-item label="推送间隔分钟">
+                    <el-input v-model="state.settingsForm.low_balance_alert_interval_minutes" placeholder="1440" />
+                  </el-form-item>
+                  <el-form-item label="标题模板">
+                    <el-input v-model="state.settingsForm.low_balance_alert_title" placeholder="饭卡余额提醒" />
+                  </el-form-item>
+                  <el-form-item label="内容模板">
+                    <el-input
+                      v-model="state.settingsForm.low_balance_alert_content"
+                      type="textarea"
+                      :rows="4"
+                      placeholder="{name}，你的饭卡余额为 {balance} 元，低于 {threshold} 元，请及时处理。"
+                    />
+                  </el-form-item>
+                  <div class="variable-row">
+                    <span>{name}</span>
+                    <span>{balance}</span>
+                    <span>{threshold}</span>
+                    <span>{department}</span>
+                    <span>{card_no}</span>
+                    <span>{now}</span>
+                  </div>
+                  <div class="form-actions compact-actions">
+                    <el-button
+                      :loading="state.lowBalancePreviewLoading"
+                      @click="previewLowBalanceAlerts"
+                    >
+                      <Search :size="16" /> 测试条件
+                    </el-button>
+                  </div>
+                </el-form>
+                <div v-if="state.lowBalancePreview" class="preview-result">
+                  <div class="preview-summary">
+                    <span>命中 {{ state.lowBalancePreview.total }} 人</span>
+                    <strong>当前应推送 {{ state.lowBalancePreview.due_total }} 人</strong>
+                  </div>
+                  <el-table :data="state.lowBalancePreview.items" max-height="260" stripe>
+                    <el-table-column prop="name" label="用户" width="100" show-overflow-tooltip />
+                    <el-table-column prop="department" label="部门" width="110" show-overflow-tooltip />
+                    <el-table-column label="余额" width="92">
+                      <template #default="{ row }">{{ formatCurrency(row.balance) }}</template>
+                    </el-table-column>
+                    <el-table-column label="预计推送" width="154" show-overflow-tooltip>
+                      <template #default="{ row }">{{ row.due ? '现在' : formatDateTime(row.next_push_at) }}</template>
+                    </el-table-column>
+                    <el-table-column prop="content" label="内容" min-width="220" show-overflow-tooltip />
+                  </el-table>
+                </div>
+              </section>
+
               <section class="settings-panel">
                 <h3>审批回调</h3>
                 <el-form label-position="top">
@@ -2090,10 +2218,13 @@ const App = {
                   <el-table-column label="启用" width="90">
                     <template #default="{ row }"><el-switch v-model="row.is_active" /></template>
                   </el-table-column>
-                  <el-table-column label="操作" width="100" fixed="right">
+                  <el-table-column label="操作" width="176" fixed="right">
                     <template #default="{ row }">
                       <el-button type="primary" plain size="small" @click="saveUser(row)">
                         <Save :size="14" /> 保存
+                      </el-button>
+                      <el-button plain size="small" @click="openResetPasswordDialog(row)">
+                        重置密码
                       </el-button>
                     </template>
                   </el-table-column>
@@ -2139,6 +2270,32 @@ const App = {
                 </el-form>
               </el-tab-pane>
             </el-tabs>
+
+            <el-dialog
+              v-model="state.resetPasswordDialog.visible"
+              title="重置密码"
+              width="420px"
+              append-to-body
+              @close="closeResetPasswordDialog"
+            >
+              <el-form label-position="top" @submit.prevent>
+                <el-form-item label="账号">
+                  <el-input :model-value="state.resetPasswordDialog.row?.username || ''" disabled />
+                </el-form-item>
+                <el-form-item label="新密码">
+                  <el-input
+                    v-model="state.resetPasswordDialog.password"
+                    type="password"
+                    show-password
+                    autocomplete="new-password"
+                  />
+                </el-form-item>
+              </el-form>
+              <template #footer>
+                <el-button @click="closeResetPasswordDialog">取消</el-button>
+                <el-button type="primary" @click="resetUserPassword">保存</el-button>
+              </template>
+            </el-dialog>
           </section>
         </section>
 

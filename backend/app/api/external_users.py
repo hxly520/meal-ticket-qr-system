@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,11 +19,13 @@ from app.schemas.external_user import (
     CardUserBindingOut,
     CardUserBindingUpdate,
     ExternalUserCandidateOut,
+    LowBalanceAlertPreview,
+    LowBalanceAlertPreviewItem,
     SyncResult,
     WecomUserBindingOut,
     WecomUserBindingPage,
 )
-from app.services.external_user_sync import run_user_sync
+from app.services.external_user_sync import low_balance_alert_candidates, run_user_sync
 from app.services.system_settings import get_runtime_settings
 from app.services.wanoa import WanoaClient, sync_wanoa_candidates
 
@@ -195,6 +198,7 @@ def list_wecom_user_bindings(
                 binding_status=binding.status if binding else None,
                 last_balance=binding.last_balance if binding else None,
                 last_balance_at=binding.last_balance_at if binding else None,
+                low_balance_pushed_at=binding.low_balance_pushed_at if binding else None,
             )
         )
     return WecomUserBindingPage(
@@ -203,6 +207,31 @@ def list_wecom_user_bindings(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/low-balance-alert/preview", response_model=LowBalanceAlertPreview)
+def preview_low_balance_alert(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "hr", "auditor")),
+) -> LowBalanceAlertPreview:
+    runtime = get_runtime_settings(db)
+    items = low_balance_alert_candidates(db, include_not_due=True)
+    threshold = items[0]["threshold"] if items else parse_decimal_or_zero(runtime.low_balance_alert_threshold)
+    return LowBalanceAlertPreview(
+        enabled=runtime.low_balance_alert_enabled,
+        threshold=threshold,
+        interval_minutes=runtime.low_balance_alert_interval_minutes,
+        total=len(items),
+        due_total=len([item for item in items if item["due"]]),
+        items=[LowBalanceAlertPreviewItem(**item) for item in items],
+    )
+
+
+def parse_decimal_or_zero(value: str | None) -> Decimal:
+    try:
+        return Decimal(str(value or "0").strip())
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
 
 
 @router.post("/bindings", response_model=CardUserBindingOut)

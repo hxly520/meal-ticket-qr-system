@@ -748,6 +748,48 @@ a {
   padding: 10px;
 }
 
+.variable-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 14px;
+}
+
+.variable-row span {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.preview-result {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.preview-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.preview-summary span {
+  color: var(--muted);
+}
+
+.preview-summary strong {
+  color: var(--text);
+}
+
 .user-tabs {
   margin-top: 4px;
 }

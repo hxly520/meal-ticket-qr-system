@@ -78,6 +78,7 @@ class WecomUserBindingOut(BaseModel):
     binding_status: str | None = None
     last_balance: Decimal | None = None
     last_balance_at: datetime | None = None
+    low_balance_pushed_at: datetime | None = None
 
 
 class WecomUserBindingPage(BaseModel):
@@ -125,3 +126,27 @@ class PublicCardBalanceResult(BaseModel):
     balance_message: str | None = None
     last_balance_at: datetime | None = None
     refreshed_at: datetime | None = None
+
+
+class LowBalanceAlertPreviewItem(BaseModel):
+    wecom_userid: str
+    name: str | None = None
+    department: str | None = None
+    card_no: str | None = None
+    balance: Decimal
+    threshold: Decimal
+    last_balance_at: datetime | None = None
+    last_pushed_at: datetime | None = None
+    next_push_at: datetime | None = None
+    due: bool
+    title: str
+    content: str
+
+
+class LowBalanceAlertPreview(BaseModel):
+    enabled: bool
+    threshold: Decimal
+    interval_minutes: int
+    total: int
+    due_total: int
+    items: list[LowBalanceAlertPreviewItem]
