@@ -1,0 +1,83 @@
+<svg width="1180" height="720" viewBox="0 0 1180 720" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">后台管理桌面端示意图</title>
+  <desc id="desc">展示饭票二维码核销系统的数据总览、侧边导航、餐别进度、接口健康和最近动态。</desc>
+  <defs>
+    <linearGradient id="screen" x1="0" y1="0" x2="1180" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EAF7F2"/>
+      <stop offset="0.45" stop-color="#EEF6FF"/>
+      <stop offset="1" stop-color="#F8FAFC"/>
+    </linearGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#0F172A" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+  <rect width="1180" height="720" rx="34" fill="url(#screen)"/>
+  <rect x="54" y="50" width="1072" height="620" rx="28" fill="#FFFFFF" filter="url(#shadow)"/>
+  <rect x="54" y="50" width="248" height="620" rx="28" fill="#0F172A"/>
+  <rect x="54" y="50" width="248" height="620" rx="28" fill="#0F172A"/>
+  <circle cx="96" cy="100" r="24" fill="#14B8A6"/>
+  <text x="132" y="108" fill="#FFFFFF" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="800">饭票核销</text>
+  <g font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15">
+    <rect x="82" y="156" width="186" height="42" rx="12" fill="#14B8A6"/>
+    <text x="112" y="183" fill="#FFFFFF" font-weight="700">数据总览</text>
+    <text x="112" y="238" fill="#CBD5E1">饭票记录</text>
+    <text x="112" y="288" fill="#CBD5E1">饭票生成</text>
+    <text x="112" y="338" fill="#CBD5E1">企微用户绑定</text>
+    <text x="112" y="388" fill="#CBD5E1">系统设置</text>
+    <text x="112" y="438" fill="#CBD5E1">权限管理</text>
+    <text x="112" y="488" fill="#CBD5E1">日志中心</text>
+  </g>
+
+  <text x="342" y="108" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="30" font-weight="800">数据总览</text>
+  <text x="342" y="138" fill="#64748B" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15">系统管理员 · 管理员 / 行政制票 / 饭堂核销 / 行政查看</text>
+  <rect x="828" y="86" width="132" height="36" rx="18" fill="#E0F2FE"/>
+  <text x="894" y="109" fill="#0369A1" text-anchor="middle" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="700">核销时段：早餐</text>
+  <rect x="974" y="82" width="98" height="42" rx="14" fill="#2563EB"/>
+  <text x="1023" y="109" fill="#FFFFFF" text-anchor="middle" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700">生成饭票</text>
+
+  <g font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif">
+    <rect x="342" y="174" width="170" height="118" rx="18" fill="#F8FAFC"/>
+    <text x="370" y="212" fill="#64748B" font-size="14">饭票总数</text>
+    <text x="370" y="258" fill="#0F172A" font-size="38" font-weight="800">13</text>
+    <rect x="532" y="174" width="170" height="118" rx="18" fill="#F0FDF4"/>
+    <text x="560" y="212" fill="#15803D" font-size="14">已核销</text>
+    <text x="560" y="258" fill="#14532D" font-size="38" font-weight="800">3</text>
+    <rect x="722" y="174" width="170" height="118" rx="18" fill="#FFF7ED"/>
+    <text x="750" y="212" fill="#C2410C" font-size="14">未使用</text>
+    <text x="750" y="258" fill="#7C2D12" font-size="38" font-weight="800">2</text>
+    <rect x="912" y="174" width="170" height="118" rx="18" fill="#F0FDFA"/>
+    <text x="940" y="212" fill="#0F766E" font-size="14">饭卡用户</text>
+    <text x="940" y="258" fill="#134E4A" font-size="38" font-weight="800">166</text>
+  </g>
+
+  <rect x="342" y="326" width="440" height="250" rx="22" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="374" y="370" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="800">餐别核销进度</text>
+  <g font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15">
+    <text x="374" y="424" fill="#334155">早餐</text>
+    <rect x="446" y="410" width="270" height="16" rx="8" fill="#E2E8F0"/>
+    <rect x="446" y="410" width="168" height="16" rx="8" fill="#14B8A6"/>
+    <text x="732" y="424" fill="#64748B">1 / 2</text>
+    <text x="374" y="476" fill="#334155">午餐</text>
+    <rect x="446" y="462" width="270" height="16" rx="8" fill="#E2E8F0"/>
+    <rect x="446" y="462" width="216" height="16" rx="8" fill="#2563EB"/>
+    <text x="732" y="476" fill="#64748B">2 / 5</text>
+    <text x="374" y="528" fill="#334155">晚餐</text>
+    <rect x="446" y="514" width="270" height="16" rx="8" fill="#E2E8F0"/>
+    <rect x="446" y="514" width="60" height="16" rx="8" fill="#F97316"/>
+    <text x="732" y="528" fill="#64748B">0 / 6</text>
+  </g>
+
+  <rect x="812" y="326" width="270" height="250" rx="22" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="842" y="370" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="800">接口健康</text>
+  <g font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15">
+    <text x="842" y="424" fill="#475569">企业微信入口</text>
+    <text x="1018" y="424" fill="#16A34A" text-anchor="end" font-weight="800">已配置</text>
+    <text x="842" y="474" fill="#475569">饭卡余额同步</text>
+    <text x="1018" y="474" fill="#16A34A" text-anchor="end" font-weight="800">正常</text>
+    <text x="842" y="524" fill="#475569">后台服务</text>
+    <text x="1018" y="524" fill="#16A34A" text-anchor="end" font-weight="800">运行中</text>
+  </g>
+
+  <rect x="342" y="602" width="740" height="36" rx="18" fill="#ECFDF5"/>
+  <text x="712" y="625" text-anchor="middle" fill="#047857" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="700">饭票记录、用户绑定、低余额提醒和日志审计均支持分页查询与筛选</text>
+</svg>

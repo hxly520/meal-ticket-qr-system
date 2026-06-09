@@ -1,0 +1,77 @@
+<svg width="1180" height="720" viewBox="0 0 1180 720" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">移动端核销与饭票二维码示意图</title>
+  <desc id="desc">展示员工收到饭票二维码图片、饭堂扫码核销成功、员工查看饭卡余额三个移动端页面。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1180" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="0.45" stop-color="#EFF6FF"/>
+      <stop offset="1" stop-color="#ECFDF5"/>
+    </linearGradient>
+    <filter id="phoneShadow" x="-20%" y="-10%" width="140%" height="125%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#0F172A" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <rect width="1180" height="720" rx="34" fill="url(#bg)"/>
+  <text x="80" y="80" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="34" font-weight="800">移动端闭环</text>
+  <text x="80" y="118" fill="#475569" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="17">企业微信收到二维码图片，饭堂扫码自动核销，员工可查看饭卡余额与低余额提醒</text>
+
+  <g filter="url(#phoneShadow)">
+    <rect x="106" y="160" width="260" height="488" rx="34" fill="#111827"/>
+    <rect x="122" y="184" width="228" height="440" rx="24" fill="#FFFFFF"/>
+    <rect x="182" y="198" width="108" height="8" rx="4" fill="#1F2937"/>
+    <text x="236" y="245" text-anchor="middle" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="800">珠海辰玉新材料</text>
+    <text x="236" y="272" text-anchor="middle" fill="#64748B" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13">饭票二维码</text>
+    <rect x="152" y="304" width="168" height="116" rx="16" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="172" y="335" fill="#64748B" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12">用餐日期</text>
+    <text x="248" y="335" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700">2026-06-09</text>
+    <text x="172" y="366" fill="#64748B" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12">餐别</text>
+    <text x="248" y="366" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700">早餐</text>
+    <text x="172" y="397" fill="#64748B" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12">申请人</text>
+    <text x="248" y="397" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700">张三</text>
+    <rect x="170" y="444" width="132" height="132" rx="16" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <g fill="#0F172A">
+      <rect x="184" y="458" width="16" height="16"/><rect x="204" y="458" width="16" height="16"/><rect x="240" y="458" width="16" height="16"/><rect x="268" y="458" width="16" height="16"/>
+      <rect x="184" y="478" width="16" height="16"/><rect x="224" y="478" width="16" height="16"/><rect x="248" y="478" width="16" height="16"/>
+      <rect x="204" y="506" width="16" height="16"/><rect x="240" y="506" width="16" height="16"/><rect x="268" y="506" width="16" height="16"/>
+      <rect x="184" y="534" width="16" height="16"/><rect x="224" y="534" width="16" height="16"/><rect x="248" y="534" width="16" height="16"/><rect x="276" y="534" width="12" height="16"/>
+      <rect x="204" y="558" width="16" height="16"/><rect x="240" y="558" width="16" height="16"/><rect x="268" y="558" width="16" height="16"/>
+    </g>
+    <text x="236" y="604" text-anchor="middle" fill="#64748B" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11">版权归IT部所有</text>
+  </g>
+
+  <g filter="url(#phoneShadow)">
+    <rect x="460" y="160" width="260" height="488" rx="34" fill="#111827"/>
+    <rect x="476" y="184" width="228" height="440" rx="24" fill="#F8FAFC"/>
+    <rect x="536" y="198" width="108" height="8" rx="4" fill="#1F2937"/>
+    <rect x="498" y="226" width="184" height="88" rx="22" fill="#0F766E"/>
+    <text x="590" y="263" text-anchor="middle" fill="#FFFFFF" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="17" font-weight="800">饭堂核销</text>
+    <text x="590" y="290" text-anchor="middle" fill="#CCFBF1" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13">扫码后自动判断</text>
+    <circle cx="590" cy="382" r="58" fill="#DCFCE7"/>
+    <path d="M562 382L582 402L622 358" stroke="#16A34A" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="590" y="474" text-anchor="middle" fill="#14532D" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="800">核销成功</text>
+    <rect x="504" y="514" width="172" height="68" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <text x="524" y="542" fill="#64748B" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12">饭票状态</text>
+    <text x="524" y="568" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="800">已核销 · 早餐</text>
+  </g>
+
+  <g filter="url(#phoneShadow)">
+    <rect x="814" y="160" width="260" height="488" rx="34" fill="#111827"/>
+    <rect x="830" y="184" width="228" height="440" rx="24" fill="#FFFFFF"/>
+    <rect x="890" y="198" width="108" height="8" rx="4" fill="#1F2937"/>
+    <text x="944" y="248" text-anchor="middle" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="800">我的饭卡</text>
+    <rect x="852" y="284" width="184" height="146" rx="24" fill="#2563EB"/>
+    <text x="944" y="326" text-anchor="middle" fill="#DBEAFE" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13">当前余额</text>
+    <text x="944" y="378" text-anchor="middle" fill="#FFFFFF" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="34" font-weight="900">￥1301.00</text>
+    <text x="944" y="406" text-anchor="middle" fill="#DBEAFE" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12">最近同步 08:30</text>
+    <rect x="852" y="462" width="184" height="72" rx="18" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="874" y="492" fill="#64748B" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12">饭卡号</text>
+    <text x="874" y="518" fill="#0F172A" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="800">1000000001</text>
+    <rect x="852" y="552" width="184" height="46" rx="18" fill="#FEF3C7"/>
+    <text x="944" y="581" text-anchor="middle" fill="#92400E" font-family="Inter, PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="800">低余额时企业微信提醒</text>
+  </g>
+
+  <path d="M384 404H434" stroke="#64748B" stroke-width="3" stroke-linecap="round"/>
+  <path d="M428 396L438 404L428 412" stroke="#64748B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M738 404H788" stroke="#64748B" stroke-width="3" stroke-linecap="round"/>
+  <path d="M782 396L792 404L782 412" stroke="#64748B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
