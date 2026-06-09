@@ -92,6 +92,17 @@ a {
   line-height: 1.5;
 }
 
+.login-notice {
+  margin: -8px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(60, 199, 221, 0.28);
+  border-radius: var(--radius-sm);
+  background: var(--cyan-soft);
+  color: #c7f5ff;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
 .brand-line {
   display: flex;
   align-items: center;

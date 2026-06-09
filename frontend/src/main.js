@@ -158,16 +158,44 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error.response?.data?.detail || '请求处理失败'
+    const message = apiErrorMessage(error)
     if (error.response?.status === 401) {
       state.token = ''
       state.me = null
       localStorage.removeItem('token')
+      if (state.verifyToken && isVerifyRequest(error)) {
+        state.loginError = '请先使用饭堂核销员账号登录，登录后会继续处理当前二维码'
+      }
     }
-    ElMessage.error(message)
+    if (!error.config?.silentError) {
+      ElMessage.error(message)
+    }
     return Promise.reject(error)
   }
 )
+
+function apiErrorMessage(error, fallback = '请求处理失败') {
+  if (!error.response) {
+    return '网络请求失败，请检查手机网络、系统访问地址或服务器状态'
+  }
+  const status = error.response.status
+  const detail = error.response.data?.detail
+  if (status === 401) return '请先使用饭堂核销员账号登录后再扫码核销'
+  if (status === 403) return '当前账号没有饭堂核销权限，请联系管理员分配核销员角色'
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => item?.msg || item?.message || '')
+      .filter(Boolean)
+      .join('；') || fallback
+  }
+  if (status === 404) return '二维码不存在，请确认是否扫描了本系统生成的饭票二维码'
+  return fallback
+}
+
+function isVerifyRequest(error) {
+  return String(error.config?.url || '').includes('/tickets/verify')
+}
 
 function hasRole(...roles) {
   return Boolean(state.me?.roles?.some((role) => roles.includes(role)))
@@ -514,6 +542,13 @@ async function loadInitialData() {
   if (state.verifyToken && hasRole('admin', 'verifier')) {
     state.activeView = 'verify'
     await processScannedText(state.verifyToken)
+  } else if (state.verifyToken) {
+    state.activeView = 'verify'
+    state.verifyResult = {
+      type: 'danger',
+      title: '无法核销',
+      message: '当前账号没有饭堂核销权限，请使用核销员账号登录或联系管理员分配权限',
+    }
   }
 }
 
@@ -1011,13 +1046,16 @@ async function voidSelectedTickets() {
   await loadTicketOverviewStats()
 }
 
-async function previewTicket() {
+async function previewTicket(options = {}) {
   const token = state.verifyToken.trim()
   if (!token) {
     ElMessage.warning('请输入二维码 token')
     return
   }
-  const res = await api.get('/tickets/verify/preview', { params: { token } })
+  const res = await api.get('/tickets/verify/preview', {
+    params: { token },
+    silentError: options.silentError,
+  })
   state.verifyPreview = res.data
 }
 
@@ -1051,15 +1089,24 @@ async function processScannedText(text) {
   const token = extractTokenFromScan(text)
   state.verifyToken = token
   state.verifyPreview = null
+  if (!token) {
+    state.verifyResult = {
+      type: 'danger',
+      title: '核销失败',
+      message: '二维码内容为空，请重新扫描饭票二维码',
+    }
+    scanLocked = false
+    return
+  }
   state.verifyResult = {
     type: '',
     title: '正在核销',
     message: '已识别二维码，正在读取饭票信息',
   }
   try {
-    await previewTicket()
-    await api.post('/tickets/verify/consume', { token })
-    await previewTicket()
+    await previewTicket({ silentError: true })
+    await api.post('/tickets/verify/consume', { token }, { silentError: true })
+    await previewTicket({ silentError: true })
     await loadTicketOverviewStats()
     state.verifyResult = {
       type: 'success',
@@ -1069,14 +1116,14 @@ async function processScannedText(text) {
     ElMessage.success('饭票核销成功')
   } catch (error) {
     try {
-      await previewTicket()
+      await previewTicket({ silentError: true })
     } catch {
       state.verifyPreview = null
     }
     state.verifyResult = {
       type: 'danger',
       title: '核销失败',
-      message: error.response?.data?.detail || '二维码无法核销',
+      message: apiErrorMessage(error, '二维码无法核销'),
     }
   } finally {
     setTimeout(() => {
@@ -1350,6 +1397,9 @@ const App = {
         <div class="brand-line">
           <Utensils :size="28" />
           <h1>饭票二维码核销系统</h1>
+        </div>
+        <div v-if="state.verifyToken" class="login-notice">
+          已识别到饭票二维码，请使用饭堂核销员账号登录，登录后将自动继续核销。
         </div>
         <el-form label-position="top" autocomplete="off" @submit.prevent>
           <el-form-item label="账号">
