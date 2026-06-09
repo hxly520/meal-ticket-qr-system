@@ -117,6 +117,13 @@ const state = reactive({
     company_name: '公司名称',
     footer_text: '版权归IT部门所有',
   },
+  mealWindows: {
+    timezone: 'Asia/Shanghai',
+    breakfast: '06:00-09:00',
+    lunch: '11:00-13:30',
+    dinner: '17:00-19:30',
+  },
+  clockNow: Date.now(),
   publicToken: isTicketPage
     ? new URLSearchParams(location.search).get('token') || ''
     : '',
@@ -139,6 +146,9 @@ const state = reactive({
 })
 
 let scanLocked = false
+setInterval(() => {
+  state.clockNow = Date.now()
+}, 30 * 1000)
 
 api.interceptors.request.use((config) => {
   if (state.token) config.headers.Authorization = `Bearer ${state.token}`
@@ -165,6 +175,45 @@ function hasRole(...roles) {
 
 function formatMeal(type) {
   return { breakfast: '早餐', lunch: '午餐', dinner: '晚餐' }[type] || type
+}
+
+function parseMealWindow(value) {
+  const text = String(value || '').trim()
+  const parts = text.split(/\s*(?:-|~|至|到)\s*/, 2)
+  if (parts.length !== 2) return null
+  const start = clockToMinutes(parts[0])
+  const end = clockToMinutes(parts[1])
+  if (start === null || end === null) return null
+  return { start, end, text: `${minutesToClock(start)}-${minutesToClock(end)}` }
+}
+
+function clockToMinutes(value) {
+  const match = String(value || '').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/)
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+function minutesToClock(value) {
+  const hour = Math.floor(value / 60)
+  const minute = value % 60
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function currentMinutesInTimezone(timestamp, timezone) {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: timezone || 'Asia/Shanghai',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(timestamp))
+  const hour = Number(parts.find((item) => item.type === 'hour')?.value || 0)
+  const minute = Number(parts.find((item) => item.type === 'minute')?.value || 0)
+  return hour * 60 + minute
+}
+
+function windowContainsMinute(window, minute) {
+  if (window.end >= window.start) return window.start <= minute && minute <= window.end
+  return minute >= window.start || minute <= window.end
 }
 
 function formatStatus(status) {
@@ -371,6 +420,27 @@ const activeTitle = computed(() => {
   return '后台管理'
 })
 
+const activeMealWindowText = computed(() => {
+  const rows = [
+    { key: 'breakfast', label: '早餐', value: state.mealWindows.breakfast },
+    { key: 'lunch', label: '午餐', value: state.mealWindows.lunch },
+    { key: 'dinner', label: '晚餐', value: state.mealWindows.dinner },
+  ]
+    .map((item) => ({ ...item, window: parseMealWindow(item.value) }))
+    .filter((item) => item.window)
+  if (!rows.length) return '核销时段：未配置'
+  const nowMinutes = currentMinutesInTimezone(state.clockNow, state.mealWindows.timezone)
+  const active = rows.find((item) => windowContainsMinute(item.window, nowMinutes))
+  if (active) return `核销时段：${active.label} ${active.window.text}`
+  const next = [...rows]
+    .sort((a, b) => {
+      const offsetA = (a.window.start - nowMinutes + 1440) % 1440
+      const offsetB = (b.window.start - nowMinutes + 1440) % 1440
+      return offsetA - offsetB
+    })[0]
+  return `非核销时段 · 下一时段：${next.label} ${next.window.text}`
+})
+
 const canManageTickets = computed(() => hasRole('admin', 'hr'))
 
 const roleDefinitions = [
@@ -430,6 +500,7 @@ async function loadMe() {
 }
 
 async function loadInitialData() {
+  await loadMealWindows()
   if (hasRole('admin', 'hr', 'auditor')) {
     await loadTickets()
     await loadTicketOverviewStats()
@@ -560,6 +631,26 @@ async function loadSettings() {
   state.settingsForm = Object.fromEntries(res.data.map((item) => [item.key, item.value || '']))
   state.publicBrand.company_name = state.settingsForm.ticket_company_name || state.publicBrand.company_name
   state.publicBrand.footer_text = state.settingsForm.ticket_footer_text || state.publicBrand.footer_text
+  applyMealWindowsFromSettings()
+}
+
+async function loadMealWindows() {
+  const res = await api.get('/settings/public-meal-windows')
+  state.mealWindows = {
+    timezone: res.data.timezone || 'Asia/Shanghai',
+    breakfast: res.data.breakfast || '',
+    lunch: res.data.lunch || '',
+    dinner: res.data.dinner || '',
+  }
+}
+
+function applyMealWindowsFromSettings() {
+  state.mealWindows = {
+    timezone: state.settingsForm.app_timezone || state.mealWindows.timezone || 'Asia/Shanghai',
+    breakfast: state.settingsForm.meal_window_breakfast || '',
+    lunch: state.settingsForm.meal_window_lunch || '',
+    dinner: state.settingsForm.meal_window_dinner || '',
+  }
 }
 
 async function saveSettings() {
@@ -568,6 +659,7 @@ async function saveSettings() {
     const res = await api.put('/settings', { values: state.settingsForm })
     state.settings = res.data
     state.settingsForm = Object.fromEntries(res.data.map((item) => [item.key, item.value || '']))
+    applyMealWindowsFromSettings()
     ElMessage.success('系统设置已保存')
   } finally {
     state.saving = false
@@ -1093,6 +1185,7 @@ const App = {
       navItems,
       weekdayOptions,
       activeTitle,
+      activeMealWindowText,
       ticketStats,
       dashboardBars,
       canManageTickets,
@@ -1358,7 +1451,7 @@ const App = {
           </div>
           <div class="top-actions">
             <span v-if="state.activeView !== 'verify'" class="soft-pill">今日同步成功</span>
-            <span v-if="state.activeView !== 'verify'" class="soft-pill">核销时段：午餐 11:00-13:30</span>
+            <span v-if="state.activeView !== 'verify'" class="soft-pill">{{ activeMealWindowText }}</span>
             <el-button v-if="state.activeView !== 'verify' && hasRole('admin', 'hr')" type="primary" @click="switchView('create')">
               <Plus :size="16" /> 生成饭票
             </el-button>

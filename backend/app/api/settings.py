@@ -20,6 +20,17 @@ def get_public_brand(db: Session = Depends(get_db)) -> dict[str, str]:
     }
 
 
+@router.get("/public-meal-windows")
+def get_public_meal_windows(db: Session = Depends(get_db)) -> dict[str, str | None]:
+    runtime = get_runtime_settings(db)
+    return {
+        "timezone": runtime.app_timezone,
+        "breakfast": runtime.meal_window_breakfast,
+        "lunch": runtime.meal_window_lunch,
+        "dinner": runtime.meal_window_dinner,
+    }
+
+
 @router.get("", response_model=list[SettingItem])
 def get_settings(
     db: Session = Depends(get_db),
