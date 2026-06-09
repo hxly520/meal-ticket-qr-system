@@ -99,6 +99,7 @@ def consume_ticket(db: Session, token: str, verifier: User, request: Request) ->
     ticket = db.scalar(select(MealTicket).where(MealTicket.token_hash == token_hash))
     if not ticket:
         _log(db, None, verifier.id, "failed", "二维码不存在", request)
+        db.commit()
         raise HTTPException(status_code=404, detail="二维码不存在")
     if ticket.status != "unused":
         status_error = ticket_status_error(ticket, runtime)
@@ -239,8 +240,17 @@ def _log(
             ticket_id=ticket_id,
             verifier_id=verifier_id,
             result=result,
-            reason=reason,
-            ip=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
+            reason=_limit_text(reason, 255),
+            ip=_limit_text(request.client.host if request.client else None, 80),
+            user_agent=_limit_text(request.headers.get("user-agent"), 255),
         )
     )
+
+
+def _limit_text(value: str | None, max_length: int) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if len(text) <= max_length:
+        return text
+    return text[:max_length]
