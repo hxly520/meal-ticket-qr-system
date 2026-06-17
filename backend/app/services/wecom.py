@@ -347,6 +347,9 @@ async def process_approval_event(db: Session, event: WeComApprovalEvent) -> None
     if event.processed:
         return
 
+    runtime = get_runtime_settings(db)
+    expected_template_id = normalize_template_id(runtime.wecom_approval_template_id)
+
     if event.sp_status != 2:
         if event.sp_status in (None, 1):
             event.processed = False
@@ -359,12 +362,54 @@ async def process_approval_event(db: Session, event: WeComApprovalEvent) -> None
 
     payload = event.raw_payload or {}
     detail_fields: dict[str, Any] = {}
-    runtime = get_runtime_settings(db)
     client = WeComClient(runtime)
-    if runtime.wecom_corp_id and runtime.wecom_secret:
+
+    if not expected_template_id:
+        event.processed = False
+        event.process_result = "未配置饭票审批模板 ID，已拒绝自动生成饭票"
+        db.commit()
+        return
+
+    current_template_id = normalize_template_id(
+        event.template_id or extract_approval_template_id(payload)
+    )
+    detail: dict[str, Any] | None = None
+    if not current_template_id and runtime.wecom_corp_id and runtime.wecom_secret:
         try:
             detail = await client.get_approval_detail(event.sp_no)
+            current_template_id = normalize_template_id(extract_approval_template_id(detail))
+            event.template_id = current_template_id or event.template_id
+            payload = {**payload, "approval_detail": detail}
+            event.raw_payload = payload
+        except Exception as exc:  # noqa: BLE001
+            event.processed = False
+            event.process_result = f"审批模板无法确认，未生成饭票: {exc}"[:255]
+            db.commit()
+            return
+
+    if current_template_id != expected_template_id:
+        event.processed = True
+        event.process_result = (
+            "审批模板不匹配，已忽略，不生成饭票"
+            f"（当前: {current_template_id or '未知'}）"
+        )[:255]
+        db.commit()
+        return
+
+    if runtime.wecom_corp_id and runtime.wecom_secret:
+        try:
+            if detail is None:
+                detail = await client.get_approval_detail(event.sp_no)
             detail_fields = extract_approval_fields(detail)
+            detail_template_id = normalize_template_id(extract_approval_template_id(detail))
+            if detail_template_id and detail_template_id != expected_template_id:
+                event.processed = True
+                event.process_result = (
+                    "审批详情模板不匹配，已忽略，不生成饭票"
+                    f"（当前: {detail_template_id}）"
+                )[:255]
+                db.commit()
+                return
             payload = {**payload, **detail_fields, "approval_detail": detail}
             event.raw_payload = payload
         except Exception as exc:  # noqa: BLE001
@@ -531,6 +576,38 @@ def parse_positive_int(value: Any, *, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return max(number, 1)
+
+
+def normalize_template_id(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def extract_approval_template_id(payload: dict[str, Any] | None) -> str | None:
+    if not payload:
+        return None
+    info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
+    approval_info = payload.get("ApprovalInfo") if isinstance(payload.get("ApprovalInfo"), dict) else {}
+    detail = payload.get("approval_detail") if isinstance(payload.get("approval_detail"), dict) else {}
+    detail_info = detail.get("info") if isinstance(detail.get("info"), dict) else {}
+    candidates = [
+        payload.get("template_id"),
+        payload.get("TemplateId"),
+        payload.get("templateid"),
+        payload.get("templateid_new"),
+        info.get("template_id"),
+        info.get("templateid"),
+        info.get("templateid_new"),
+        approval_info.get("TemplateId"),
+        detail_info.get("template_id"),
+        detail_info.get("templateid"),
+        detail_info.get("templateid_new"),
+    ]
+    for item in candidates:
+        template_id = normalize_template_id(item)
+        if template_id:
+            return template_id
+    return None
 
 
 def extract_applyer_department_ids(payload: dict[str, Any]) -> list[int]:
