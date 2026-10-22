@@ -1,7 +1,7 @@
 # 饭票系统升级方案 v1.1
 
 > 目标：修复审批回调错票问题，新增补发与申请原因，补齐数据持久化与 git 版本化部署。
-> 状态：代码已完成并本地验证通过（6 项回归测试 + 前端构建 + 迁移 SQL 生成），**尚未动生产**。
+> 状态：**已于 2026-10-22 14:22 上线生产并通过验证**，详见文末「上线结果」。
 
 ---
 
@@ -260,3 +260,31 @@ CREATE UNIQUE INDEX uq_meal_tickets_approval_slot
    - 方案 B：我把代码包安全传到服务器先上线，git 仅用于后续拉取
 2. **上线窗口**：建议今天非用餐时段（如 14:00-15:00 或 20:00 后）。
 3. 是否同时加每日 2:00 的自动备份 crontab（推荐加）。
+
+---
+
+## 九、上线结果（2026-10-22）
+
+| 项目 | 结果 |
+|---|---|
+| 上线时间 | 2026-10-22 14:22（非用餐时段，实际中断约 20 秒） |
+| 版本 | `8fe726c`（GitHub main 与生产一致） |
+| 数据库迁移 | `0005_ticket_reason_push` 执行成功，可回滚 |
+| 数据核对 | 饭票 194 张、事件 94 条，与升级前一致；192 张饭票已回填申请原因 |
+| 容器 | 6 个（新增 `worker`），backend/frontend/postgres 均 healthy |
+| 健康检查 | `GET /api/health` 返回 200，耗时 4ms |
+| 回调链路 | 实测回调 15ms 返回；worker 自动重试 5 次并记录 errcode；**0 张误出票** |
+| 企业微信 | access_token 获取成功，进程内缓存生效 |
+| 备份 | 升级前手工备份 + 每日 02:00 自动备份已配置 |
+
+升级前备份：`/opt/meal-ticket/backups/pre_deploy_20261022_141723.sql.gz`
+旧版本目录保留在 `/opt/meal-ticket.old.20261022`，可整体回退。
+
+### 回退方式
+
+```bash
+cd /opt/meal-ticket
+git checkout 442a004 && docker compose build backend worker frontend && docker compose up -d
+docker compose exec backend alembic downgrade 0004_low_balance_alerts
+./scripts/restore_db.sh backups/pre_deploy_20261022_141723.sql.gz
+```

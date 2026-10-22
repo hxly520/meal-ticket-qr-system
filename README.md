@@ -17,13 +17,17 @@
 | 模块 | 能力 |
 | --- | --- |
 | 企业微信审批 | 审批通过自动生成饭票，支持审批字段映射、部门中文名、二维码图片发送 |
+| 稳定出票 | 回调秒级返回，独立 worker 异步出票；审批详情取不到时失败重试而不是生成错误饭票 |
 | 一人一餐一码 | 支持“用餐人数 x 多选餐别”批量生成，确保每人每餐独立二维码 |
 | 饭堂扫码核销 | 手机相机、微信或企业微信扫一扫打开核销页，自动判断成功或失败原因 |
 | 核销规则 | 校验饭票状态、用餐日期、早餐/午餐/晚餐核销时段、过期和作废状态 |
-| 后台管理 | 数据总览、饭票分页筛选、批量作废、Excel 导出、权限管理、系统设置 |
+| 后台管理 | 数据总览、饭票分页筛选、批量作废、**补发推送**、Excel 导出、权限管理、系统设置 |
+| 审批原因留痕 | 饭票记录保存企业微信审批单的“申请原因”，列表与导出均可查看 |
+| 推送可追踪 | 每张票记录推送次数、最近推送时间与失败原因，失败可直接补发 |
 | 权限角色 | `admin` 管理员、`hr` 行政制票、`verifier` 饭堂核销、`auditor` 行政查看 |
 | 饭卡余额 | 同步企业微信用户与万傲瑞达饭卡用户，支持绑定、余额展示和低余额提醒 |
 | 日志审计 | 同步记录、访问记录、操作记录分离，低余额推送成功/失败可追踪 |
+| 运维友好 | 命名卷持久化、每日自动备份、git 一键部署与失败自动回滚 |
 | 开源部署 | Docker Compose 一键启动 PostgreSQL、Redis、FastAPI、Vue、Nginx |
 
 ## 界面预览
@@ -77,7 +81,24 @@ docker compose up -d --build
 
 ## 生产部署
 
-本项目支持远程服务器构建与调试，本机不需要启动完整生产环境：
+服务器上按 git 仓库方式部署，升级只需一条命令：
+
+```bash
+git clone https://github.com/hxly520/meal-ticket-qr-system.git /opt/meal-ticket
+cd /opt/meal-ticket
+cp .env.example .env      # 修改数据库密码、JWT_SECRET_KEY、APP_BASE_URL
+docker compose up -d --build
+```
+
+日常升级（自动备份 → 拉代码 → 构建 → 迁移 → 重启 → 健康检查 → 失败回滚）：
+
+```bash
+cd /opt/meal-ticket && ./scripts/deploy.sh
+```
+
+`.env` 里需要保留 `COMPOSE_PROJECT_NAME=meal-ticket`，否则换目录部署会新建空数据卷。
+
+也可以从本机远程构建调试，本机不需要启动完整生产环境：
 
 ```bash
 SSH_HOST=your-server \
@@ -102,7 +123,8 @@ REMOTE_DIR=/opt/meal-ticket \
 | [万傲 V6600 API 探查](docs/wanoa-v6600-api-discovery.md) | 厂商 API 发现与联调记录 |
 | [企业微信饭卡余额入口](docs/wecom-card-balance-entry.md) | 自建应用打开个人余额页 |
 | [二次开发指南](docs/development.md) | 本地开发、代码结构、测试和扩展 |
-| [运维手册](docs/operations.md) | 常用命令、备份恢复、排障 |
+| [运维手册](docs/operations.md) | 常用命令、备份恢复、补发排障、升级与回滚 |
+| [升级方案](docs/upgrade-plan.md) | 稳定出票改造、补发、申请原因、部署与持久化方案 |
 | [GitHub 自动建仓与推送](docs/github-publish.md) | GitHub CLI、公开仓库、自动推送 |
 
 ## 开发与验证

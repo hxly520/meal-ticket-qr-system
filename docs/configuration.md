@@ -23,9 +23,14 @@ cp .env.example .env
 | `APP_TIMEZONE` | 默认时区 | `Asia/Shanghai` |
 | `JWT_SECRET_KEY` | 登录 token 签名密钥 | 随机长字符串 |
 | `INITIAL_ADMIN_PASSWORD` | 首次初始化管理员密码；留空时自动生成并写入后端容器日志 | `随机长字符串` |
-| `BACKEND_WORKERS` | 后端 worker 数量 | `2` |
+| `BACKEND_WORKERS` | 后端接口进程数量 | `2` |
+| `TZ` | 容器时区，影响日期计算，必须与业务时区一致 | `Asia/Shanghai` |
+| `WORKER_POLL_SECONDS` | 审批事件 worker 空闲轮询间隔（秒） | `3` |
+| `COMPOSE_PROJECT_NAME` | Compose 项目名，**必须保持 `meal-ticket`**，否则会新建空数据卷导致“数据丢失” | `meal-ticket` |
 | `HTTP_PORT` | 本机 HTTP 端口 | `80` |
 | `PUBLIC_HTTP_PORT` | 额外公开端口 | `18001` |
+
+> 升级已有环境时，`.env` 至少要有 `COMPOSE_PROJECT_NAME=meal-ticket`、`TZ=Asia/Shanghai` 两项。
 
 ## 后台系统设置
 
