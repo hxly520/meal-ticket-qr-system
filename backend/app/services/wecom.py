@@ -392,7 +392,10 @@ async def fetch_approval_detail(client: WeComClient, sp_no: str) -> dict[str, An
     try:
         return await client.get_approval_detail(sp_no)
     except Exception as exc:  # noqa: BLE001
-        raise ApprovalError(f"获取审批详情失败: {exc}") from exc
+        message = str(exc)
+        if "审批详情" not in message:
+            message = f"获取审批详情失败: {message}"
+        raise ApprovalError(message) from exc
 
 
 async def process_approval_event(db: Session, event: WeComApprovalEvent) -> None:
