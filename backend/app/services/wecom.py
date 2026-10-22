@@ -1,5 +1,6 @@
+import time
 from io import BytesIO
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -7,7 +8,7 @@ import httpx
 import qrcode
 from fastapi import HTTPException
 from PIL import Image, ImageDraw, ImageFont
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,7 +22,22 @@ from app.services.system_settings import (
     normalize_department_display,
 )
 from app.services.tickets import build_verify_url, create_tickets_from_generate
+from app.utils.tokens import hash_token, new_token
 from app.utils.wecom_crypto import decrypt_message, parse_encrypted_xml, verify_signature, xml_to_dict
+
+
+# access_token 进程内缓存：key -> (token, 失效时间戳)
+_ACCESS_TOKEN_CACHE: dict[str, tuple[str, float]] = {}
+
+MAX_PROCESSING_ATTEMPTS = 5
+
+
+class ApprovalError(RuntimeError):
+    """审批单处理失败。retryable=False 表示重试也不会成功。"""
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 class WeComClient:
@@ -32,6 +48,10 @@ class WeComClient:
     async def get_access_token(self) -> str:
         if not self.runtime.wecom_corp_id or not self.runtime.wecom_secret:
             raise RuntimeError("企业微信 CorpID 或 Secret 未配置")
+        cache_key = f"{self.runtime.wecom_corp_id}:{self.runtime.wecom_secret}"
+        cached = _ACCESS_TOKEN_CACHE.get(cache_key)
+        if cached and cached[1] > time.time():
+            return cached[0]
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{self.base_url}/gettoken",
@@ -44,6 +64,9 @@ class WeComClient:
             data = resp.json()
         if data.get("errcode") != 0:
             raise RuntimeError(f"获取企业微信 access_token 失败: {data}")
+        expires_in = int(data.get("expires_in") or 7200)
+        # 提前 5 分钟过期，避免边界失效
+        _ACCESS_TOKEN_CACHE[cache_key] = (data["access_token"], time.time() + max(expires_in - 300, 60))
         return data["access_token"]
 
     async def get_approval_detail(self, sp_no: str) -> dict[str, Any]:
@@ -300,7 +323,18 @@ def _int_or_none(value: Any) -> int | None:
     return int(value)
 
 
-async def record_and_process_approval_event(db: Session, event: dict[str, Any]) -> WeComApprovalEvent:
+def merge_approval_payload(previous: Any, incoming: Any) -> dict[str, Any]:
+    """合并回调报文：空值不覆盖已有值，避免重试把已解析的表单字段冲掉。"""
+    merged: dict[str, Any] = dict(previous or {})
+    for key, value in (incoming or {}).items():
+        if value is None or value == "" or value == [] or value == {}:
+            continue
+        merged[key] = value
+    return merged
+
+
+def record_approval_event(db: Session, event: dict[str, Any]) -> WeComApprovalEvent:
+    """回调只落库，不在这里出票：企业微信要求秒级返回，处理交给 worker。"""
     sp_no = event.get("sp_no")
     if not sp_no:
         raise ValueError("审批事件缺少 sp_no")
@@ -312,13 +346,20 @@ async def record_and_process_approval_event(db: Session, event: dict[str, Any]) 
         existing.template_id = event.get("template_id") or existing.template_id
         existing.applicant_userid = event.get("applicant_userid") or existing.applicant_userid
         existing.sp_status = incoming_status if incoming_status is not None else existing.sp_status
-        existing.raw_payload = event.get("raw_payload") or event or existing.raw_payload
-        if status_changed and incoming_status == 2:
+        existing.raw_payload = merge_approval_payload(
+            existing.raw_payload,
+            event.get("raw_payload"),
+        )
+        if status_changed:
+            # 状态变更才重新处理，避免重复回调把已完成的单再次出票
             existing.processed = False
+            existing.processing = False
+            existing.processing_at = None
+            existing.attempts = 0
+            existing.last_error = None
+            existing.process_result = None
         db.commit()
         db.refresh(existing)
-        if not existing.processed:
-            await process_approval_event(db, existing)
         return existing
 
     row = WeComApprovalEvent(
@@ -334,58 +375,64 @@ async def record_and_process_approval_event(db: Session, event: dict[str, Any]) 
     except IntegrityError:
         db.rollback()
         existing = db.scalar(select(WeComApprovalEvent).where(WeComApprovalEvent.sp_no == sp_no))
-        if existing and not existing.processed:
-            await process_approval_event(db, existing)
+        if not existing:
+            raise
+        existing.raw_payload = merge_approval_payload(
+            existing.raw_payload,
+            event.get("raw_payload"),
+        )
+        db.commit()
+        db.refresh(existing)
         return existing
     db.refresh(row)
-
-    await process_approval_event(db, row)
     return row
 
 
+async def fetch_approval_detail(client: WeComClient, sp_no: str) -> dict[str, Any]:
+    try:
+        return await client.get_approval_detail(sp_no)
+    except Exception as exc:  # noqa: BLE001
+        raise ApprovalError(f"获取审批详情失败: {exc}") from exc
+
+
 async def process_approval_event(db: Session, event: WeComApprovalEvent) -> None:
+    """处理一条审批事件。失败抛 ApprovalError，由 worker 记录原因并重试。"""
     if event.processed:
         return
 
     runtime = get_runtime_settings(db)
     expected_template_id = normalize_template_id(runtime.wecom_approval_template_id)
+    if not expected_template_id:
+        raise ApprovalError("未配置饭票审批模板 ID", retryable=False)
 
     if event.sp_status != 2:
-        if event.sp_status in (None, 1):
-            event.processed = False
-            event.process_result = f"等待审批通过，当前状态: {event.sp_status or '未知'}"
+        if event.sp_status in (3, 4):
+            voided = void_unused_tickets(db, event.sp_no)
+            event.processed = True
+            event.process_result = (
+                f"审批未通过或已撤销，已作废未核销饭票 {voided} 张"
+                if voided
+                else f"审批未通过或已撤销，状态: {event.sp_status}，不生成饭票"
+            )[:255]
         else:
             event.processed = True
-            event.process_result = f"审批未通过或已撤销，状态: {event.sp_status}，不生成饭票"
+            event.process_result = f"等待审批通过，当前状态: {event.sp_status or '未知'}"[:255]
         db.commit()
         return
 
-    payload = event.raw_payload or {}
-    detail_fields: dict[str, Any] = {}
+    payload = dict(event.raw_payload or {})
     client = WeComClient(runtime)
-
-    if not expected_template_id:
-        event.processed = False
-        event.process_result = "未配置饭票审批模板 ID，已拒绝自动生成饭票"
-        db.commit()
-        return
 
     current_template_id = normalize_template_id(
         event.template_id or extract_approval_template_id(payload)
     )
-    detail: dict[str, Any] | None = None
-    if not current_template_id and runtime.wecom_corp_id and runtime.wecom_secret:
-        try:
-            detail = await client.get_approval_detail(event.sp_no)
-            current_template_id = normalize_template_id(extract_approval_template_id(detail))
-            event.template_id = current_template_id or event.template_id
-            payload = {**payload, "approval_detail": detail}
-            event.raw_payload = payload
-        except Exception as exc:  # noqa: BLE001
-            event.processed = False
-            event.process_result = f"审批模板无法确认，未生成饭票: {exc}"[:255]
-            db.commit()
-            return
+    if not current_template_id:
+        detail = await fetch_approval_detail(client, event.sp_no)
+        current_template_id = normalize_template_id(extract_approval_template_id(detail))
+        event.template_id = current_template_id or event.template_id
+        payload = merge_approval_payload(payload, {"approval_detail": detail})
+        event.raw_payload = payload
+        db.commit()
 
     if current_template_id != expected_template_id:
         event.processed = True
@@ -396,24 +443,24 @@ async def process_approval_event(db: Session, event: WeComApprovalEvent) -> None
         db.commit()
         return
 
-    if runtime.wecom_corp_id and runtime.wecom_secret:
-        try:
-            if detail is None:
-                detail = await client.get_approval_detail(event.sp_no)
-            detail_fields = extract_approval_fields(detail)
-            detail_template_id = normalize_template_id(extract_approval_template_id(detail))
-            if detail_template_id and detail_template_id != expected_template_id:
-                event.processed = True
-                event.process_result = (
-                    "审批详情模板不匹配，已忽略，不生成饭票"
-                    f"（当前: {detail_template_id}）"
-                )[:255]
-                db.commit()
-                return
-            payload = {**payload, **detail_fields, "approval_detail": detail}
-            event.raw_payload = payload
-        except Exception as exc:  # noqa: BLE001
-            event.process_result = f"审批详情获取失败，使用回调字段生成: {exc}"
+    # 出票必须基于审批详情：取不到就失败重试，绝不再用默认值兜底出票
+    detail = await fetch_approval_detail(client, event.sp_no)
+    detail_template_id = normalize_template_id(extract_approval_template_id(detail))
+    if detail_template_id and detail_template_id != expected_template_id:
+        event.processed = True
+        event.process_result = (
+            "审批详情模板不匹配，已忽略，不生成饭票"
+            f"（当前: {detail_template_id}）"
+        )[:255]
+        db.commit()
+        return
+
+    detail_fields = extract_approval_fields(detail)
+    payload = merge_approval_payload(payload, detail_fields)
+    payload["approval_detail"] = detail
+    event.raw_payload = payload
+    # 先落库：后续推送失败重试时可以复用已解析的字段
+    db.commit()
 
     applicant = event.applicant_userid or payload.get("employee_userid") or payload.get("userid")
     employee_name = payload.get("employee_name") or payload.get("employeeName")
@@ -458,24 +505,53 @@ async def process_approval_event(db: Session, event: WeComApprovalEvent) -> None
         department = " / ".join(f"部门ID {item}" for item in applyer_department_ids)
     employee_name = employee_name or applicant or "企业微信员工"
     meal_date_value = (
-        payload.get("meal_date")
+        payload.get(runtime.wecom_field_meal_date)
+        or payload.get("meal_date")
         or payload.get("mealDate")
-        or payload.get(runtime.wecom_field_meal_date)
     )
-    meal_date = date.fromisoformat(meal_date_value) if meal_date_value else date.today()
     meal_type_value = (
-        payload.get("meal_type")
+        payload.get(runtime.wecom_field_meal_type)
+        or payload.get("meal_type")
         or payload.get("mealType")
-        or payload.get(runtime.wecom_field_meal_type)
-        or "lunch"
     )
+    missing_fields = [
+        label
+        for label, value in (("用餐日期", meal_date_value), ("餐别", meal_type_value))
+        if not value
+    ]
+    if missing_fields:
+        raise ApprovalError(
+            "审批表单缺少字段："
+            + "、".join(missing_fields)
+            + "（表单实际字段："
+            + "、".join(str(item) for item in detail_fields)
+            + "）"
+        )
+    try:
+        meal_date = date.fromisoformat(str(meal_date_value))
+    except ValueError as exc:
+        raise ApprovalError(f"用餐日期格式无法识别：{meal_date_value}") from exc
+
     meal_types = normalize_meal_types(meal_type_value)
-    diner_count = parse_positive_int(
-        payload.get("diner_count")
+    diner_count_value = (
+        payload.get(runtime.wecom_field_diner_count)
+        or payload.get("diner_count")
         or payload.get("dinerCount")
-        or payload.get(runtime.wecom_field_diner_count)
-        or 1,
-        default=1,
+    )
+    diner_count = 1
+    count_note = "，表单未填写用餐人数，按 1 人处理"
+    if diner_count_value not in (None, ""):
+        try:
+            diner_count = int(float(str(diner_count_value).strip()))
+        except (TypeError, ValueError) as exc:
+            raise ApprovalError(f"用餐人数无法识别：{diner_count_value}") from exc
+        if diner_count < 1:
+            raise ApprovalError(f"用餐人数必须大于 0：{diner_count_value}")
+        count_note = ""
+    apply_reason = (
+        payload.get(runtime.wecom_field_reason)
+        or payload.get("apply_reason")
+        or payload.get("reason")
     )
 
     existing_tickets = list(
@@ -494,6 +570,7 @@ async def process_approval_event(db: Session, event: WeComApprovalEvent) -> None
         meal_date=meal_date,
         meal_types=meal_types,
         diner_count=diner_count,
+        apply_reason=str(apply_reason)[:500] if apply_reason else None,
     )
     try:
         rows = create_tickets_from_generate(
@@ -502,40 +579,107 @@ async def process_approval_event(db: Session, event: WeComApprovalEvent) -> None
             source="wecom_approval",
             approval_sp_no=event.sp_no,
         )
-        if applicant:
-            sent_count = 0
-            try:
-                for ticket, token in rows:
-                    image_bytes = build_ticket_card_png_bytes(
-                        ticket,
-                        build_verify_url(token, runtime.app_base_url),
-                        runtime.ticket_company_name,
-                        runtime.ticket_footer_text,
-                    )
-                    media_id = await client.upload_image(
-                        image_bytes,
-                        f"{ticket.ticket_no}.png",
-                    )
-                    await client.send_image(applicant, media_id)
-                    sent_count += 1
-            except Exception as exc:  # noqa: BLE001
-                event.process_result = (
-                    f"已生成 {len(rows)} 张饭票，已发送 {sent_count} 张，"
-                    f"企业微信图片发送失败: {exc}"
-                )
-            else:
-                event.process_result = f"已生成并发送 {len(rows)} 张饭票二维码图片"
-        else:
-            event.process_result = f"已生成 {len(rows)} 张饭票，未找到企业微信用户"
-        event.processed = True
-        db.commit()
     except IntegrityError:
         db.rollback()
         event = db.get(WeComApprovalEvent, event.id)
         if event:
             event.processed = True
-            event.process_result = "审批单已生成过饭票"
+            event.process_result = "审批单已生成过饭票（唯一约束拦截重复出票）"
             db.commit()
+        return
+
+    summary = f"已生成 {len(rows)} 张饭票"
+    if applicant:
+        sent, errors = await push_ticket_images(db, runtime, client, rows, applicant)
+        summary += f"，已推送 {sent} 张"
+        if errors:
+            summary += f"，失败 {len(errors)} 张（可在后台补发）：{errors[0]}"
+        elif count_note:
+            summary += count_note
+    else:
+        summary += "，未找到企业微信用户，未推送（可在后台补发）"
+    event.processed = True
+    event.process_result = summary[:255]
+    db.commit()
+
+
+async def upload_ticket_image(
+    client: WeComClient,
+    runtime: RuntimeSettings,
+    ticket: MealTicket,
+    token: str,
+) -> str:
+    image_bytes = build_ticket_card_png_bytes(
+        ticket,
+        build_verify_url(token, runtime.app_base_url),
+        runtime.ticket_company_name,
+        runtime.ticket_footer_text,
+    )
+    return await client.upload_image(image_bytes, f"{ticket.ticket_no}.png")
+
+
+async def push_ticket_images(
+    db: Session,
+    runtime: RuntimeSettings,
+    client: WeComClient,
+    rows: list[tuple[MealTicket, str]],
+    touser: str,
+) -> tuple[int, list[str]]:
+    """逐张推送二维码图片。单张失败不影响其它票，失败原因记录在票上供补发。"""
+    sent = 0
+    errors: list[str] = []
+    for ticket, token in rows:
+        try:
+            media_id = await upload_ticket_image(client, runtime, ticket, token)
+            await client.send_image(touser, media_id)
+        except Exception as exc:  # noqa: BLE001
+            ticket.last_push_error = str(getattr(exc, "detail", exc))[:255]
+            errors.append(ticket.last_push_error)
+        else:
+            ticket.push_count = (ticket.push_count or 0) + 1
+            ticket.last_push_at = datetime.now(timezone.utc)
+            ticket.last_push_error = None
+            sent += 1
+        db.commit()
+    return sent, errors
+
+
+def void_unused_tickets(db: Session, sp_no: str) -> int:
+    result = db.execute(
+        update(MealTicket)
+        .where(MealTicket.approval_sp_no == sp_no, MealTicket.status == "unused")
+        .values(status="void")
+    )
+    db.commit()
+    return int(result.rowcount or 0)
+
+
+async def resend_ticket(db: Session, ticket: MealTicket) -> MealTicket:
+    """人工补发：重新签发二维码并推送，旧二维码立即失效。"""
+    runtime = get_runtime_settings(db)
+    if ticket.status in {"used", "void"}:
+        raise HTTPException(status_code=409, detail="只有未核销的饭票可以补发")
+    if not ticket.employee_userid:
+        raise HTTPException(status_code=409, detail="该饭票没有关联企业微信用户，无法推送")
+
+    client = WeComClient(runtime)
+    token = new_token()
+    try:
+        media_id = await upload_ticket_image(client, runtime, ticket, token)
+        await client.send_image(ticket.employee_userid, media_id)
+    except Exception as exc:  # noqa: BLE001
+        ticket.last_push_error = str(getattr(exc, "detail", exc))[:255]
+        db.commit()
+        raise HTTPException(status_code=502, detail=f"补发失败：{ticket.last_push_error}") from exc
+
+    # 推送成功后才轮换 token，避免旧码已失效而新码没送达
+    ticket.token_hash = hash_token(token)
+    ticket.push_count = (ticket.push_count or 0) + 1
+    ticket.last_push_at = datetime.now(timezone.utc)
+    ticket.last_push_error = None
+    db.commit()
+    db.refresh(ticket)
+    return ticket
 
 
 def normalize_meal_type(value: str) -> str:
@@ -568,14 +712,6 @@ def normalize_meal_types(value: Any) -> list[str]:
         if normalized not in meal_types:
             meal_types.append(normalized)
     return meal_types or ["lunch"]
-
-
-def parse_positive_int(value: Any, *, default: int) -> int:
-    try:
-        number = int(float(str(value).strip()))
-    except (TypeError, ValueError):
-        return default
-    return max(number, 1)
 
 
 def normalize_template_id(value: Any) -> str | None:

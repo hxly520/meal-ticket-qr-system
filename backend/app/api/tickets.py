@@ -9,10 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_roles
 from app.db.session import get_db
+from app.models.audit_log import AuditLog
 from app.models.meal_ticket import MealTicket
 from app.models.user import User
 from app.schemas.ticket import (
     TicketBatchCreate,
+    TicketBatchResend,
+    TicketBatchResendItem,
+    TicketBatchResendResult,
     TicketBatchVoid,
     TicketBatchVoidResult,
     TicketCreate,
@@ -31,6 +35,7 @@ from app.services.tickets import (
     find_ticket_by_token,
 )
 from app.services.system_settings import get_runtime_settings, normalize_department_display
+from app.services.wecom import resend_ticket
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -213,6 +218,74 @@ def void_tickets_batch(
     return TicketBatchVoidResult(updated=updated, skipped_used=skipped_used, missing=missing)
 
 
+@router.post("/{ticket_id}/resend", response_model=TicketOut)
+async def resend_one(
+    ticket_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "hr")),
+) -> TicketOut:
+    """补发：重新推送未核销饭票的二维码图片（旧二维码同时失效）。"""
+    ticket = db.get(MealTicket, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="饭票不存在")
+    ticket = await resend_ticket(db, ticket)
+    write_audit_log(
+        db,
+        user,
+        action="ticket.resend",
+        target_type="meal_ticket",
+        target_id=str(ticket.id),
+        detail={"ticket_no": ticket.ticket_no, "push_count": ticket.push_count},
+    )
+    return ticket_out(ticket, {}, get_runtime_settings(db).wecom_department_mapping)
+
+
+@router.post("/resend-batch", response_model=TicketBatchResendResult)
+async def resend_batch(
+    payload: TicketBatchResend,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "hr")),
+) -> TicketBatchResendResult:
+    ids = list(dict.fromkeys(payload.ids))
+    tickets = list(db.scalars(select(MealTicket).where(MealTicket.id.in_(ids))).all())
+    by_id = {ticket.id: ticket for ticket in tickets}
+    missing = len([item for item in ids if item not in by_id])
+    sent = failed = skipped = 0
+    items: list[TicketBatchResendItem] = []
+    for item_id in ids:
+        ticket = by_id.get(item_id)
+        if not ticket:
+            continue
+        if ticket.status in {"used", "void"}:
+            skipped += 1
+            items.append(TicketBatchResendItem(id=item_id, ok=False, detail="已核销或已作废，跳过"))
+            continue
+        try:
+            await resend_ticket(db, ticket)
+        except HTTPException as exc:
+            failed += 1
+            items.append(TicketBatchResendItem(id=item_id, ok=False, detail=str(exc.detail)))
+        else:
+            sent += 1
+            items.append(TicketBatchResendItem(id=item_id, ok=True, detail="已推送"))
+    if sent:
+        write_audit_log(
+            db,
+            user,
+            action="ticket.resend_batch",
+            target_type="meal_ticket",
+            target_id=",".join(str(item.id) for item in by_id.values() if item.status not in {"used", "void"})[:80],
+            detail={"sent": sent, "failed": failed, "skipped": skipped},
+        )
+    return TicketBatchResendResult(
+        sent=sent,
+        failed=failed,
+        skipped=skipped,
+        missing=missing,
+        items=items,
+    )
+
+
 @router.get("/qr")
 def qr_png(token: str, db: Session = Depends(get_db)) -> StreamingResponse:
     image = qrcode.make(build_verify_url(token, get_runtime_settings(db).app_base_url))
@@ -249,6 +322,27 @@ def consume(
     out = TicketOut.model_validate(ticket)
     out.department = normalize_department_display(out.department, runtime.wecom_department_mapping)
     return out
+
+
+def write_audit_log(
+    db: Session,
+    user: User,
+    *,
+    action: str,
+    target_type: str,
+    target_id: str,
+    detail: dict,
+) -> None:
+    db.add(
+        AuditLog(
+            actor_id=user.id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            detail=detail,
+        )
+    )
+    db.commit()
 
 
 def load_user_department_map(db: Session, tickets: list[MealTicket]) -> dict[str, str]:

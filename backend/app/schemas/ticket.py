@@ -14,6 +14,7 @@ class TicketCreate(BaseModel):
     diner_count: int = Field(default=1, ge=1, le=200)
     diner_index: int = Field(default=1, ge=1, le=200)
     expire_at: datetime | None = None
+    apply_reason: str | None = Field(default=None, max_length=500)
 
 
 class TicketBatchCreate(BaseModel):
@@ -38,6 +39,7 @@ class TicketGenerate(BaseModel):
     meal_types: list[str] = Field(min_length=1)
     diner_count: int = Field(default=1, ge=1, le=200)
     expire_at: datetime | None = None
+    apply_reason: str | None = Field(default=None, max_length=500)
 
     @field_validator("meal_types")
     @classmethod
@@ -66,10 +68,32 @@ class TicketOut(BaseModel):
     expire_at: datetime
     used_at: datetime | None
     approval_sp_no: str | None
+    apply_reason: str | None = None
+    push_count: int = 0
+    last_push_at: datetime | None = None
+    last_push_error: str | None = None
     created_at: datetime
     qr_url: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class TicketBatchResend(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
+class TicketBatchResendItem(BaseModel):
+    id: int
+    ok: bool
+    detail: str | None = None
+
+
+class TicketBatchResendResult(BaseModel):
+    sent: int
+    failed: int
+    skipped: int
+    missing: int
+    items: list[TicketBatchResendItem]
 
 
 class TicketPage(BaseModel):

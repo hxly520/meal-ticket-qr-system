@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -25,8 +25,22 @@ class MealTicket(Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     used_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     approval_sp_no: Mapped[str | None] = mapped_column(String(120))
+    apply_reason: Mapped[str | None] = mapped_column(String(500))
+    push_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_push_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_push_error: Mapped[str | None] = mapped_column(String(255))
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        # 同一审批单的同一餐次同一人只允许一张票，防止回调重试/并发重复出票
+        UniqueConstraint(
+            "approval_sp_no",
+            "meal_type",
+            "diner_index",
+            name="uq_meal_tickets_approval_slot",
+        ),
+    )
 
 
 class VerificationLog(Base):

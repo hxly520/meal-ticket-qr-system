@@ -10,6 +10,7 @@ import {
   CreditCard,
   Download,
   LogOut,
+  Megaphone,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -286,6 +287,24 @@ function formatNextPush(row) {
 
 function statusTag(status) {
   return { unused: 'warning', used: 'success', expired: 'info', void: 'danger' }[status] || 'info'
+}
+
+function pushText(row) {
+  if (row.last_push_error) return '失败'
+  if (row.push_count) return '已推送'
+  return '未记录'
+}
+
+function pushTag(row) {
+  if (row.last_push_error) return 'danger'
+  if (row.push_count) return 'success'
+  return 'info'
+}
+
+function pushTip(row) {
+  if (row.last_push_error) return row.last_push_error
+  if (row.push_count) return '已推送 ' + row.push_count + ' 次'
+  return '无推送记录'
 }
 
 function sourceLabel(source) {
@@ -1019,6 +1038,42 @@ async function voidTicket(row) {
   await loadTicketOverviewStats()
 }
 
+async function resendTicket(row) {
+  await ElMessageBox.confirm(
+    `确认重新推送 ${row.employee_name} 的饭票二维码？旧二维码将立即失效。`,
+    '补发确认',
+    {
+      confirmButtonText: '补发',
+      cancelButtonText: '取消',
+      type: 'info',
+    },
+  )
+  await api.post(`/tickets/${row.id}/resend`)
+  ElMessage.success('已补发到企业微信')
+  await loadTickets()
+}
+
+async function resendSelectedTickets() {
+  if (!state.selectedTicketIds.length) {
+    ElMessage.warning('请选择需要补发的饭票')
+    return
+  }
+  await ElMessageBox.confirm(
+    `确认补发已选择的 ${state.selectedTicketIds.length} 张饭票？已核销或已作废的会自动跳过。`,
+    '批量补发确认',
+    {
+      confirmButtonText: '批量补发',
+      cancelButtonText: '取消',
+      type: 'info',
+    },
+  )
+  const res = await api.post('/tickets/resend-batch', { ids: state.selectedTicketIds })
+  const { sent, failed, skipped } = res.data
+  ElMessage.success(`补发成功 ${sent} 张，失败 ${failed} 张，跳过 ${skipped} 张`)
+  state.selectedTicketIds = []
+  await loadTickets()
+}
+
 function handleTicketSelectionChange(rows) {
   state.selectedTicketIds = rows.map((row) => row.id)
 }
@@ -1270,6 +1325,11 @@ const App = {
       searchLogs,
       createTicket,
       voidTicket,
+      resendTicket,
+      resendSelectedTickets,
+      pushText,
+      pushTag,
+      pushTip,
       handleTicketSelectionChange,
       voidSelectedTickets,
       previewTicket,
@@ -1644,6 +1704,15 @@ const App = {
                 >
                   <BadgeCheck :size="16" /> 批量作废
                 </el-button>
+                <el-button
+                  v-if="canManageTickets"
+                  type="primary"
+                  plain
+                  :disabled="!state.selectedTicketIds.length"
+                  @click="resendSelectedTickets"
+                >
+                  <Megaphone :size="16" /> 批量补发
+                </el-button>
                 <el-button type="success" @click="exportReport">
                   <Download :size="16" /> 导出
                 </el-button>
@@ -1726,6 +1795,16 @@ const App = {
                 <template #default="{ row }">{{ row.diner_index }} / {{ row.diner_count }}</template>
               </el-table-column>
               <el-table-column prop="meal_date" label="用餐日期" width="108" />
+              <el-table-column prop="apply_reason" label="申请原因" min-width="130" show-overflow-tooltip>
+                <template #default="{ row }">{{ row.apply_reason || '—' }}</template>
+              </el-table-column>
+              <el-table-column label="推送" width="92">
+                <template #default="{ row }">
+                  <el-tooltip :content="pushTip(row)" placement="top">
+                    <el-tag :type="pushTag(row)">{{ pushText(row) }}</el-tag>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
               <el-table-column label="状态" width="96">
                 <template #default="{ row }">
                   <el-tag :type="statusTag(row.status)">{{ formatStatus(row.status) }}</el-tag>
@@ -1734,8 +1813,17 @@ const App = {
               <el-table-column label="核销时间" width="154" show-overflow-tooltip>
                 <template #default="{ row }">{{ formatDateTime(row.used_at) }}</template>
               </el-table-column>
-              <el-table-column v-if="canManageTickets" label="操作" width="76">
+              <el-table-column v-if="canManageTickets" label="操作" width="148">
                 <template #default="{ row }">
+                  <el-button
+                    size="small"
+                    type="primary"
+                    plain
+                    :disabled="row.status === 'used' || row.status === 'void'"
+                    @click="resendTicket(row)"
+                  >
+                    补发
+                  </el-button>
                   <el-button
                     size="small"
                     type="danger"

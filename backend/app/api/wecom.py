@@ -15,7 +15,7 @@ from app.services.wecom import (
     WeComClient,
     parse_encrypted_approval_event,
     parse_plain_approval_event,
-    record_and_process_approval_event,
+    record_approval_event,
     verify_callback_echo,
 )
 
@@ -36,24 +36,23 @@ def verify_approval_callback(
 
 @router.post("/callback/approval")
 async def approval_callback(request: Request, db: Session = Depends(get_db)):
+    """回调只做验签与落库，立即返回 success；出票与推送由 worker 异步处理。"""
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
         payload = await request.json()
         event = parse_plain_approval_event(payload)
-        row = await record_and_process_approval_event(db, event)
+        row = record_approval_event(db, event)
         return JSONResponse({"ok": True, "sp_no": row.sp_no, "processed": row.processed})
-    else:
-        runtime = get_runtime_settings(db)
-        body = (await request.body()).decode("utf-8")
-        event = parse_encrypted_approval_event(
-            runtime,
-            body,
-            request.query_params.get("msg_signature"),
-            request.query_params.get("timestamp"),
-            request.query_params.get("nonce"),
-        )
-    row = await record_and_process_approval_event(db, event)
-    _ = row
+    runtime = get_runtime_settings(db)
+    body = (await request.body()).decode("utf-8")
+    event = parse_encrypted_approval_event(
+        runtime,
+        body,
+        request.query_params.get("msg_signature"),
+        request.query_params.get("timestamp"),
+        request.query_params.get("nonce"),
+    )
+    record_approval_event(db, event)
     return PlainTextResponse("success")
 
 

@@ -30,6 +30,7 @@ def create_ticket(
     source: str,
     created_by: int | None = None,
     approval_sp_no: str | None = None,
+    commit: bool = True,
 ) -> tuple[MealTicket, str]:
     runtime = get_runtime_settings(db)
     token = new_token()
@@ -48,9 +49,13 @@ def create_ticket(
         expire_at=payload.expire_at or end_of_day(payload.meal_date, runtime.app_timezone),
         created_by=created_by,
         approval_sp_no=approval_sp_no,
+        apply_reason=payload.apply_reason,
     )
     db.add(ticket)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(ticket)
     return ticket, token
 
@@ -64,27 +69,35 @@ def create_tickets_from_generate(
     approval_sp_no: str | None = None,
 ) -> list[tuple[MealTicket, str]]:
     rows: list[tuple[MealTicket, str]] = []
-    for diner_index in range(1, payload.diner_count + 1):
-        for meal_type in payload.meal_types:
-            ticket_payload = TicketCreate(
-                employee_userid=payload.employee_userid,
-                employee_name=payload.employee_name,
-                department=payload.department,
-                meal_date=payload.meal_date,
-                meal_type=meal_type,
-                diner_count=payload.diner_count,
-                diner_index=diner_index,
-                expire_at=payload.expire_at,
-            )
-            rows.append(
-                create_ticket(
-                    db,
-                    ticket_payload,
-                    source=source,
-                    created_by=created_by,
-                    approval_sp_no=approval_sp_no,
+    try:
+        for diner_index in range(1, payload.diner_count + 1):
+            for meal_type in payload.meal_types:
+                ticket_payload = TicketCreate(
+                    employee_userid=payload.employee_userid,
+                    employee_name=payload.employee_name,
+                    department=payload.department,
+                    meal_date=payload.meal_date,
+                    meal_type=meal_type,
+                    diner_count=payload.diner_count,
+                    diner_index=diner_index,
+                    expire_at=payload.expire_at,
+                    apply_reason=payload.apply_reason,
                 )
-            )
+                rows.append(
+                    create_ticket(
+                        db,
+                        ticket_payload,
+                        source=source,
+                        created_by=created_by,
+                        approval_sp_no=approval_sp_no,
+                        commit=False,
+                    )
+                )
+        # 一次审批的整套票要么全成功要么全回滚，避免留下半套票
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return rows
 
 

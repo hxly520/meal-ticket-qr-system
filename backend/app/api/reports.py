@@ -42,7 +42,11 @@ def export_tickets(
             "用餐人数",
             "第几人",
             "来源",
+            "申请原因",
             "状态",
+            "推送状态",
+            "最近推送时间",
+            "推送次数",
             "生成时间",
             "核销时间",
         ]
@@ -82,7 +86,11 @@ def export_tickets(
                 item.diner_count,
                 item.diner_index,
                 item.source,
+                item.apply_reason or "",
                 item.status,
+                push_status_text(item),
+                format_local_datetime(item.last_push_at, timezone_name),
+                item.push_count or 0,
                 format_local_datetime(item.created_at, timezone_name),
                 format_local_datetime(item.used_at, timezone_name),
             ]
@@ -95,6 +103,14 @@ def export_tickets(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="meal-tickets.xlsx"'},
     )
+
+
+def push_status_text(item: MealTicket) -> str:
+    if item.last_push_error:
+        return f"推送失败：{item.last_push_error}"
+    if item.push_count:
+        return "已推送"
+    return "未记录"
 
 
 def format_local_datetime(value: datetime | None, timezone_name: str) -> str:

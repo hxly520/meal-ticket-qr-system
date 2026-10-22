@@ -27,6 +27,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,6 +43,23 @@ services:
       sh -c "alembic upgrade head &&
              python -m app.seed_admin &&
              gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --workers $${BACKEND_WORKERS:-2}"
+
+  # 审批事件消费者：回调只落库，出票与图片推送都在这里串行执行并自动重试
+  worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-3}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: python -m app.worker
 
   frontend:
     build:
