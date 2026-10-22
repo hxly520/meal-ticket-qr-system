@@ -558,8 +558,12 @@ async def process_approval_event(db: Session, event: WeComApprovalEvent) -> None
         db.scalars(select(MealTicket).where(MealTicket.approval_sp_no == event.sp_no)).all()
     )
     if existing_tickets:
+        unsent = len([item for item in existing_tickets if not item.push_count])
         event.processed = True
-        event.process_result = f"审批单已生成过 {len(existing_tickets)} 张饭票"
+        event.process_result = (
+            f"审批单已生成过 {len(existing_tickets)} 张饭票"
+            + (f"，其中 {unsent} 张未推送成功，可在后台补发" if unsent else "")
+        )[:255]
         db.commit()
         return
 
